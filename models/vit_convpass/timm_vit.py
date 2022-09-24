@@ -5,23 +5,28 @@ import torch.nn as nn
 import torch
 from functools import partial
 
-class BasicAdapter(nn.Module):
+class ConvByPass(nn.Module):
 
     def __init__(self, in_dim):
-        super(BasicAdapter, self).__init__()
+        super(ConvByPass, self).__init__()
 
-        self.linear1 = nn.Linear(in_dim, 2*in_dim)
+        self.conv1 = nn.Conv1d(in_dim, 128)
+        self.gelu1 = nn.GELU()
+        self.conv2 = nn.Conv2d(kernel_size=3, stride=1, padding=1, in_channels=1, out_channels=1)
+        self.conv3 = nn.Conv1d(in_channels=1, out_channels=in_dim)
+        self.gelu2 = nn.GELU()
 
-        self.gelu = nn.GELU()
-        self.linear2 = nn.Linear(2*in_dim,in_dim)
-
-    def forward(self, x):
-
-        x1 = self.linear1(x)
+    def forward(self, x0):
+        x1 = self.conv1(x0) # 1-d
         x2 = self.gelu(x1)
-        x3 = self.linear2(x2)
 
-        out = x + x3
+        c, h, w = 0, 1, 2
+        x2 = x2.view(x2.size(0), )
+        x3 = self.conv2(x2)
+        x4 = self.gelu2(x3)
+        x5 = self.conv3(x4)
+
+        out = x0 + x5
         return out
 
 class BlockWithAdapter(nn.Module):
@@ -50,7 +55,6 @@ class BlockWithAdapter(nn.Module):
         # x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
 
         # With Adapter
-
         x = x + self.drop_path1(self.ls1(
             self.adapter1(self.attn(self.norm1(x))))
         )

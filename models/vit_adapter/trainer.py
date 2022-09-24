@@ -105,7 +105,9 @@ class Trainer():
     def get_dataloader(self):
         config = self.config
 
-        batch_size = config.DATA.BATCH_SIZE
+        train_batch_size = config.DATA.BATCH_SIZE
+        val_batch_size = config.TEST.BATCH_SIZE
+        test_batch_size = config.TEST.BATCH_SIZE
         num_workers = 0 if config.DEBUG else config.DATA.NUM_WORKERS
 
         dataset_root_dir = config.DATA.ROOT_DIR
@@ -117,8 +119,8 @@ class Trainer():
         if not self.train_mode:
             assert config.DATA.TEST, "Please provide at least a data_list"
             test_dataset = self.get_dataset(config.DATA.TEST, test_data_transform)
-            self.test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size, num_workers=num_workers,
-                                                                shuffle=False, drop_last=True)
+            self.test_data_loader = torch.utils.data.DataLoader(test_dataset, test_batch_size, num_workers=num_workers,
+                                                                shuffle=False, drop_last=False)
             return self.test_data_loader
 
         else:
@@ -126,17 +128,19 @@ class Trainer():
             aug_transform = get_augmentation_transforms(config)
             train_data_transform = VisualTransform(config, aug_transform)
             train_dataset = self.get_dataset(config.DATA.TRAIN, train_data_transform)
-            self.train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size, num_workers=num_workers,
+            self.train_data_loader = torch.utils.data.DataLoader(train_dataset, train_batch_size, num_workers=num_workers,
                                                                  shuffle=True, pin_memory=True, drop_last=True)
 
             assert config.DATA.VAL, "CONFIG.DATA.VAL should be provided"
             val_dataset = self.get_dataset(config.DATA.VAL, test_data_transform)
-            self.val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size, num_workers=num_workers,
+            self.val_data_loader = torch.utils.data.DataLoader(val_dataset, val_batch_size, num_workers=num_workers,
                                                                shuffle=False, pin_memory=True, drop_last=True)
 
             return self.train_data_loader, self.val_data_loader
     def train(self, ):
 
+        if self.config.TRAIN.INIT and os.path.exists(self.config.TRAIN.INIT):
+            self.init_weight(self.config.TRAIN.INIT)
         if self.config.MODEL.FIX_BACKBONE:
             for name, p in self.network.named_parameters():
                 if 'adapter' in name or 'head' in name:
@@ -191,7 +195,7 @@ class Trainer():
             self.network.train()
             num_train = len(train_data_loader) * self.batch_size
 
-            with tqdm(total=num_train) as pbar:
+            with tqdm(total=num_train, ncols=80) as pbar:
                 for i, batch_data in enumerate(train_data_loader):
 
                     loss = self._train_one_batch(batch_data=batch_data,
@@ -238,6 +242,9 @@ class Trainer():
                 logging.info('Current Best MIN_HTER={}%, AUC={}%'.format(100 * self.val_metrcis['MIN_HTER'],
                                                                          100 * self.val_metrcis['AUC']))
 
+                if epoch>20 and train_loss.avg < 0.00001:
+                    logging.info("Early stop since Avg Training loss<0.00001. ".format(str(train_loss_avg)))
+                    return
     def _train_one_batch(self, batch_data, optimizer):
         network_input, target = batch_data[1], batch_data[2]
 

@@ -13,7 +13,10 @@ _C.DATA.VAL = ['data/data_list/REPLAY-ALL.csv']
 
 
 _C.MODEL = CN()
-_C.MODEL.ARCH = 'resnet18'
+_C.MODEL.ARCH = 'vit_base_patch16_224'
+_C.MODEL.CONV = 'conv' # cdc
+
+
 
 _C.MODEL.IN_CHANNELS = 3
 
@@ -25,5 +28,6 @@ _C.MODEL.CHANNELS.YUV = False
 _C.MODEL.CHANNELS.LAB = False
 _C.MODEL.CHANNELS.XYZ = False
 
+
 _C.MODEL.IMAGENET_PRETRAIN = True
-_C.MODEL.FIX_BACKBONE = False
+_C.MODEL.FIX_BACKBONE = False # True for fixing the backbone but not the adapter

@@ -82,7 +82,10 @@ class Trainer():
 
         self.train_mode = True
 
-        self.network = build_net(arch_name=config.MODEL.ARCH, pretrained=config.MODEL.IMAGENET_PRETRAIN)
+        kwargs = {
+            'conv_type': self.config.MODEL.CONV
+        }
+        self.network = build_net(arch_name=config.MODEL.ARCH, pretrained=config.MODEL.IMAGENET_PRETRAIN, **kwargs)
         if self.config.CUDA:
             self.network.cuda()
 
@@ -137,23 +140,19 @@ class Trainer():
                                                                shuffle=False, pin_memory=True, drop_last=True)
 
             return self.train_data_loader, self.val_data_loader
-
-
     def train(self, ):
 
-        # Set up optimizer
-        if self.config.TRAIN.INIT:
-            assert os.path.exists(self.config.TRAIN.INIT)
+        if self.config.TRAIN.INIT and os.path.exists(self.config.TRAIN.INIT):
             self.init_weight(self.config.TRAIN.INIT)
 
         if self.config.MODEL.FIX_BACKBONE:
             for name, p in self.network.named_parameters():
+                if 'adapter' in name or 'head' in name:
+                    p.requires_grad = True
                     # import pdb; pdb.set_trace()
-                    if 'head' in name or 'blocks.11' in name or name == 'name.bias' or name == 'name.weight':
-                        p.requires_grad = True
-                        # import pdb; pdb.set_trace()
-                    else:
-                        p.requires_grad = False
+                else:
+                    p.requires_grad = False
+        # Set up optimizer
         if self.config.TRAIN.OPTIM.TYPE == 'SGD':
             logging.info('Setting: Using SGD Optimizer')
             self.optimizer = optim.SGD(
@@ -200,7 +199,7 @@ class Trainer():
             self.network.train()
             num_train = len(train_data_loader) * self.batch_size
 
-            with tqdm(total=num_train) as pbar:
+            with tqdm(total=num_train, ncols=80) as pbar:
                 for i, batch_data in enumerate(train_data_loader):
 
                     loss = self._train_one_batch(batch_data=batch_data,
@@ -246,8 +245,7 @@ class Trainer():
 
                 logging.info('Current Best MIN_HTER={}%, AUC={}%'.format(100 * self.val_metrcis['MIN_HTER'],
                                                                          100 * self.val_metrcis['AUC']))
-
-                if epoch>20 and train_loss.avg < 0.00001:
+                if epoch > 20 and train_loss.avg < 0.00001:
                     logging.info("Early stop since Avg Training loss<0.00001. ".format(str(train_loss_avg)))
                     return
     def _train_one_batch(self, batch_data, optimizer):
@@ -289,7 +287,7 @@ class Trainer():
         spoofing_label_gt_dict = {}
         self.network.eval()
         with torch.no_grad():
-            for data in tqdm(test_data_loader):
+            for data in tqdm(test_data_loader, ncols=80):
                 network_input, target, video_ids = data[1], data[2], data[3]
 
                 output_prob = self.inference(network_input.cuda())
