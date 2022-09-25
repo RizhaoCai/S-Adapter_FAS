@@ -3,7 +3,7 @@ import torchvision.models as models
 from torch import nn
 from .timm_vit import _create_vit_adapter
 import logging
-def get_model_from_torchvision(arch_name, imagetnet_pretrain):
+def get_model_from_torchvision(arch_name, imagetnet_pretrain, num_classes):
     """
     resnet18 = models.resnet18(pretrained=True)
     alexnet = models.alexnet(pretrained=True)
@@ -23,7 +23,7 @@ def get_model_from_torchvision(arch_name, imagetnet_pretrain):
     """
     net = models.__dict__[arch_name](pretrained=imagetnet_pretrain)
     in_channel = net.fc.in_features
-    net.fc = nn.Linear(in_channel, 2)
+    net.fc = nn.Linear(in_channel, num_classes)
     return net
 
 
@@ -41,9 +41,9 @@ def build_net(config):
     model_arch = config.MODEL.ARCH
     fix_backbone = config.MODEL.FIX_BACKBONE
     num_classes = config.MODEL.NUM_CLASSES # Default 2
-    import pdb; pdb.set_trace()
+
     if 'net' in model_arch.lower() and model_arch.lower() in models.__dict__.keys():
-        model =  get_model_from_torchvision(model_arch, imagetnet_pretrain)
+        model =  get_model_from_torchvision(model_arch, imagetnet_pretrain, num_classes)
         if fix_backbone:
             logging.info('Fix Backbone')
             for name, p in model.named_parameters():

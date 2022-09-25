@@ -123,19 +123,13 @@ class Trainer():
             val_data_list = self.config.DATA.PROTOCOL2.VAL
             protocol_task_name = self.config.DATA.PROTOCOL2.TASK_NAME
 
-        self.ckpt_list_of_previous_tasks = [self.config.TRAIN.INIT]
-        task_id = []
+        self.ckpt_list_of_previous_tasks = []
 
-        # Initialize Model
-        # if self.config.MODEL.FIX_BACKBONE:
-        #     logging.info('Fix Backbone')
-        #     for name, p in self.network.named_parameters():
-        #         # import pdb; pdb.set_trace()
-        #         if 'fc' in name or 'layer4' in name:
-        #             p.requires_grad = True
-        #         else:
-        #             p.requires_grad = False
+        ewc_lambda = self.config.TRAIN.EWC_LAMBDA
+        ewc_onlne = self.config.TRAIN.EWC_ONLINE
+        ewc_regularizer = EWC(ewc_lambda=ewc_lambda, if_online=ewc_onlne)
 
+        self.init_weight(self.config.TRAIN.INIT)
         for task_id in range(1, num_of_tasks+1):
 
             # 0. task
@@ -149,9 +143,6 @@ class Trainer():
             train_dataset, train_data_loader = self.get_dataloader([train_data_path], train_batch_size, if_train=True)
             val_dataset, val_data_loader = self.get_dataloader([val_data_path], test_batch_size, if_train=False)
 
-            # 2. Set up model
-            best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[-1]
-            self.init_weight(best_ckpt_for_last_task)
 
             if self.config.TRAIN.OPTIM.TYPE == 'SGD':
                 logging.info('Setting: Using SGD Optimizer')
@@ -181,14 +172,13 @@ class Trainer():
             logging.info("\n[*] Train on {} samples, validate on {} samples".format(
                 self.num_train, self.num_valid))
 
-            ewc_lambda = self.config.TRAIN.EWC_LAMBDA
-            ewc_onlne = self.config.TRAIN.EWC_ONLINE
-            ewc_regularizer = EWC(ewc_lambda=ewc_lambda, if_online=ewc_onlne)
 
             logging.info('Start task: {} {}'.format(task_id, task_name))
             self.train_a_task( self.network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name)
             self.val_metrcis['AUC'] = 0
             consolidate = True
+            best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[task_id-1]
+            self.init_weight(best_ckpt_for_last_task)
             if consolidate and task_id < len(train_data_list):
                 # estimate the fisher information of the parameters and consolidate
                 # them in the network.
@@ -228,11 +218,12 @@ class Trainer():
                                                  )
 
                     ewc_loss = ewc_regularizer.regularize(network.named_parameters())
+
                     loss = ce_loss + ewc_loss
 
                     pbar.set_description(
                         (
-                            " total loss={:.3f} ".format(loss.item(),
+                            " loss={:.4f}|ce_loss={:.4f}|ewc_loss={:.4f} ".format(loss.item(), ce_loss.item(), ewc_loss.item(),
                                                          )
                         )
                     )
@@ -371,8 +362,7 @@ class Trainer():
         self.start_epoch = ckpt['epoch']
         self.global_step = ckpt['global_step']
         self.valid_metric = ckpt['val_metrics']
-        # self.best_valid_acc = ckpt['best_valid_acc']
-        # import pdb; pdb.set_trace()
+
         self.network.load_state_dict(ckpt['model_state'])
 
         if hasattr(self, 'optimizer') and 'optim_state' in ckpt.keys:
