@@ -148,12 +148,12 @@ class Trainer():
 
         if self.config.MODEL.FIX_BACKBONE:
             for name, p in self.network.named_parameters():
+                # import pdb; pdb.set_trace()
+                if 'head' in name or 'blocks.11' in name or name == 'name.bias' or name == 'name.weight':
+                    p.requires_grad = True
                     # import pdb; pdb.set_trace()
-                    if 'head' in name or 'blocks.11' in name or name == 'name.bias' or name == 'name.weight':
-                        p.requires_grad = True
-                        # import pdb; pdb.set_trace()
-                    else:
-                        p.requires_grad = False
+                else:
+                    p.requires_grad = False
         if self.config.TRAIN.OPTIM.TYPE == 'SGD':
             logging.info('Setting: Using SGD Optimizer')
             self.optimizer = optim.SGD(

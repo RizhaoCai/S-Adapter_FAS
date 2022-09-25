@@ -1,14 +1,8 @@
-import math
-import pdb
-import torch
-from torch import nn
-import numpy as np
-
-from torchvision.models.resnet import ResNet, BasicBlock
+import timm
 import torchvision.models as models
-from torch.nn import functional as F
-import pdb
-
+from torch import nn
+from .timm_vit import _create_vit_adapter
+import logging
 def get_model_from_torchvision(arch_name, imagetnet_pretrain):
     """
     resnet18 = models.resnet18(pretrained=True)
@@ -34,7 +28,7 @@ def get_model_from_torchvision(arch_name, imagetnet_pretrain):
 
 
 def get_ghost_net():
-    from models.bc.ghost_net import GhostNet, ghostnet
+    from models.bc.ghost_net import ghostnet
     return ghostnet(num_classes=2)
 
 def build_net(config):
@@ -45,16 +39,57 @@ def build_net(config):
     """
     imagetnet_pretrain = config.MODEL.IMAGENET_PRETRAIN
     model_arch = config.MODEL.ARCH
-    if model_arch.lower() in models.__dict__.keys():
-        return get_model_from_torchvision(model_arch, imagetnet_pretrain)
+    fix_backbone = config.MODEL.FIX_BACKBONE
+    num_classes = config.MODEL.NUM_CLASSES # Default 2
+    import pdb; pdb.set_trace()
+    if 'net' in model_arch.lower() and model_arch.lower() in models.__dict__.keys():
+        model =  get_model_from_torchvision(model_arch, imagetnet_pretrain)
+        if fix_backbone:
+            logging.info('Fix Backbone')
+            for name, p in model.named_parameters():
+                # import pdb; pdb.set_trace()
+                if 'fc' in name or 'layer4' in name:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
+        return model
+    elif 'timm' in model_arch:
+        backbone_name = model_arch.split('-')[-1]
+        # for example: backbone_name='vit_base_patch16_224'
+        model = timm.create_model(backbone_name, pretrained=imagetnet_pretrain, num_classes=num_classes).cuda()
 
-    elif model_arch.lower() == 'ghost_net':
-        return get_ghost_net()
+        if fix_backbone:
+            for name, p in model.named_parameters():
+                # import pdb; pdb.set_trace()
+                if 'head' in name or 'blocks.11' in name or name == 'name.bias' or name == 'name.weight':
+                    p.requires_grad = True
+                    # import pdb; pdb.set_trace()
+                else:
+                    p.requires_grad = False
+        return model
 
-    else:
-        exit('No valid arch name provided!')
+    elif 'adapter' in model_arch:
+        backbone_name = model_arch.split('-')[-1]
+        def _vit_base_patch16_224(pretrained=True, **kwargs):
+            """ ViT-Base (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
+            ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
+            """
+
+            model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+            model = _create_vit_adapter('vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
+            return model
 
 
+        if backbone_name == 'vit_base_patch16_224':
+            model = _vit_base_patch16_224(imagetnet_pretrain, num_classes=num_classes)
+        for name, p in model.named_parameters():
+            # import pdb; pdb.set_trace()
+            if 'adapter' in name or 'head' in name:
+                p.requires_grad = True
+            else:
+                p.requires_grad = False
+
+        return model
 if __name__ == '__main__':
     pass
 

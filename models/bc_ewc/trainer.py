@@ -79,10 +79,6 @@ class Trainer():
         self.lr_patience = self.config.TRAIN.LR_PATIENCE
         self.train_patience = self.config.TRAIN.PATIENCE
 
-
-
-
-
         self.network = build_net(self.config)
         if self.config.CUDA:
             # self.network = torch.nn.DataParallel(self.network )
@@ -116,7 +112,7 @@ class Trainer():
     def train(self):
 
         protocol = self.config.TRAIN.PROTOCOL
-        numer_of_tasks = 10
+        num_of_tasks = 10
 
         if protocol == 1:
             train_data_list = self.config.DATA.PROTOCOL1.TRAIN
@@ -131,16 +127,16 @@ class Trainer():
         task_id = []
 
         # Initialize Model
-        if self.config.MODEL.FIX_BACKBONE:
-            logging.info('Fix Backbone')
-            for name, p in self.network.named_parameters():
-                # import pdb; pdb.set_trace()
-                if 'fc' in name or 'layer4' in name:
-                    p.requires_grad = True
-                else:
-                    p.requires_grad = False
+        # if self.config.MODEL.FIX_BACKBONE:
+        #     logging.info('Fix Backbone')
+        #     for name, p in self.network.named_parameters():
+        #         # import pdb; pdb.set_trace()
+        #         if 'fc' in name or 'layer4' in name:
+        #             p.requires_grad = True
+        #         else:
+        #             p.requires_grad = False
 
-        for task_id in range(1, numer_of_tasks+1):
+        for task_id in range(1, num_of_tasks+1):
 
             # 0. task
             task_name = protocol_task_name[task_id-1]
@@ -190,7 +186,7 @@ class Trainer():
 
             logging.info('Start task: {} {}'.format(task_id, task_name))
             self.train_a_task( self.network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name)
-
+            self.val_metrcis['AUC'] = 0
             consolidate = True
             if consolidate and task_id < len(train_data_list):
                 # estimate the fisher information of the parameters and consolidate
@@ -202,7 +198,7 @@ class Trainer():
                 ewc_regularizer.update_fisher_optpar(self.network, task_id, train_dataset,
                                                      sample_size=fisher_estimation_sample_size, consolidate=consolidate)
                 logging.info(' Done!')
-        self.val_metrcis['MIN_HTER'] = 100
+
 
     def train_a_task(self, network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name):
 
@@ -258,7 +254,7 @@ class Trainer():
                     val_output = self.validate(epoch, val_data_loader)
 
 
-                if val_output['MIN_HTER'] < self.val_metrcis['MIN_HTER']:
+                if val_output['AUC'] > self.val_metrcis['AUC']:
                     logging.info("Save models")
                     self.val_metrcis['MIN_HTER'] = val_output['MIN_HTER']
                     self.val_metrcis['AUC'] = val_output['AUC']
