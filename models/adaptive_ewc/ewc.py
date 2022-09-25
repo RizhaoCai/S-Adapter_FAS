@@ -26,7 +26,7 @@ class EWC(nn.Module):
 
         self.fisher = {}
         self.optpar = {}
-
+    
     def forward(self, named_params):
         net_loss = Variable(torch.Tensor([0]))
         if not self.ewc_lambda:
