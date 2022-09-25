@@ -26,7 +26,7 @@ class EWC(nn.Module):
 
         self.fisher = {}
         self.optpar = {}
-    
+
     def forward(self, named_params):
         net_loss = Variable(torch.Tensor([0]))
         if not self.ewc_lambda:
@@ -38,6 +38,15 @@ class EWC(nn.Module):
                     optpar = Variable(self.optpar[task_id][name])
                     net_loss += (fisher * (optpar - param).pow(2)).sum()
         return net_loss * self.ewc_lambda / 2
+
+
+    def get_simularity(self, weight, feat):
+        simularity = 0
+        return simularity
+
+    def get_simularity(self, weight, feat):
+        simularity = 0
+        return simularity
 
     def regularize(self, named_params):
         """Calculate the EWC regulonelinearization component in the overall loss.
@@ -93,3 +102,5 @@ class EWC(nn.Module):
             if param.requires_grad:
                 self.optpar[current_itr][name] = param.data.clone() # Optimal model of previous task
                 self.fisher[current_itr][name] = fisher.detach()
+
+class AdaptiveEWC(EWC):

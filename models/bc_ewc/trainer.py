@@ -182,7 +182,8 @@ class Trainer():
                 self.num_train, self.num_valid))
 
             ewc_lambda = self.config.TRAIN.EWC_LAMBDA
-            ewc_regularizer = EWC(ewc_lambda=1.0, if_online=True)
+            ewc_onlne = self.config.TRAIN.EWC_ONLINE
+            ewc_regularizer = EWC(ewc_lambda=ewc_lambda, if_online=ewc_onlne)
 
             logging.info('Start task: {} {}'.format(task_id, task_name))
             self.train_a_task( self.network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name)
