@@ -16,7 +16,7 @@ import logging
 from data.transforms import VisualTransform, get_augmentation_transforms
 
 from test import metric_report_from_dict
-
+torch.cuda.empty_cache()
 # try:
 # from torch.utils.tensorboard import SummaryWriter
 # except:
@@ -185,7 +185,7 @@ class Trainer():
                 logging.info(
                     '=> Estimating diagonals of the fisher information matrix...'
                 )
-                fisher_estimation_sample_size = 50
+                fisher_estimation_sample_size = 25
                 ewc_regularizer.update_fisher_optpar(self.network, task_id, train_dataset,
                                                      sample_size=fisher_estimation_sample_size, consolidate=consolidate)
                 logging.info(' Done!')
@@ -322,7 +322,7 @@ class Trainer():
                                                                       video_ids
                                                                       )
 
-
+                break
 
         test_results = {
             'scores_gt': gt_dict,

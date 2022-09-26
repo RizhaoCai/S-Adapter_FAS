@@ -34,8 +34,8 @@ class EWC(nn.Module):
         for task_id in self.tasks_encountered:
             for name, param in named_params:
                 if param.requires_grad:
-                    fisher = Variable(self.fisher[task_id][name])
-                    optpar = Variable(self.optpar[task_id][name])
+                    fisher = self.fisher[task_id][name].cuda()
+                    optpar = self.optpar[task_id][name].cuda()
                     net_loss += (fisher * (optpar - param).pow(2)).sum()
         return net_loss * self.ewc_lambda / 2
 
@@ -52,7 +52,7 @@ class EWC(nn.Module):
         return self.forward(named_params)
 
     # Update the Fisher Information
-    def update_fisher_optpar(self, model, current_itr, dataset, sample_size, batch_size=10, consolidate=True):
+    def update_fisher_optpar(self, model, current_itr, dataset, sample_size, batch_size=20, consolidate=True):
         """
             current_itr:
         """
@@ -77,19 +77,39 @@ class EWC(nn.Module):
             losses.append(
                 F.log_softmax(model(x), dim=1)[range(batch_size), y.data]
             )
+            del x, y
             if len(losses) >= sample_size // batch_size:
                 break
         # estimate the fisher information of the parameters.
+        parameter_dict = {}
+        for k, v in model.named_parameters():
+            if v.requires_grad:
+                parameter_dict[k] = v
         sample_losses = torch.cat(losses).unbind()
-        sample_grads = zip(*[autograd.grad(l, filter(lambda p: p.requires_grad, model.parameters()),     retain_graph=(i < len(sample_losses)))
-                             for i, l in enumerate(sample_losses, 1)])
+        sample_grads__ = [autograd.grad(l, parameter_dict.values(),  retain_graph=(i < len(sample_losses)))
+                             for i, l in enumerate(sample_losses, 1)]
+        sample_grads_ = zip(*sample_grads__)
 
-        sample_grads = [torch.stack(gs) for gs in sample_grads]
+
+        sample_grads = [torch.stack(gs) for gs in sample_grads_]
         fisher_diagonals = [(g ** 2).mean(0) for g in sample_grads]
         self.fisher[current_itr] = {}
         self.optpar[current_itr] = {}
 
-        for (name, param), fisher in zip(model.named_parameters(), fisher_diagonals):
+        with torch.no_grad():
+            # import pdb; pdb.set_trace()
+            # for name, param, fisher in zip(parameter_dict, fisher_diagonals):
+            for idx, name in enumerate(parameter_dict.keys()):
+                fisher = fisher_diagonals[idx]
+                param = parameter_dict[name]
+                assert fisher.shape == param.shape
+                self.optpar[current_itr][name] = param.data.clone().cpu() # Optimal model of previous task
+                self.fisher[current_itr][name] = fisher.detach().cpu()
+
+        """
+        sample_losses = torch.cat(losses).unbind()
+
+        for (name, param) in zip(model.named_parameters):
             if param.requires_grad:
-                self.optpar[current_itr][name] = param.data.clone() # Optimal model of previous task
-                self.fisher[current_itr][name] = fisher.detach()
+                autograd(l, param, retain_graph=True)
+        """
