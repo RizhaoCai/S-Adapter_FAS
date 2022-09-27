@@ -130,6 +130,7 @@ class Trainer():
         ewc_regularizer = EWC(ewc_lambda=ewc_lambda, if_online=ewc_onlne)
 
         self.init_weight(self.config.TRAIN.INIT)
+        self.ckpt_list_of_previous_tasks.append(self.config.TRAIN.INIT)
         for task_id in range(1, num_of_tasks+1):
 
             # 0. task
@@ -175,9 +176,9 @@ class Trainer():
 
             logging.info('Start task: {} {}'.format(task_id, task_name))
             self.train_a_task( self.network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name)
-            self.val_metrcis['AUC'] = 0
+            self.val_metrcis['AUC'] = -1
             consolidate = True
-            best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[task_id-1]
+            best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[task_id]
             self.init_weight(best_ckpt_for_last_task)
             if consolidate and task_id < len(train_data_list):
                 # estimate the fisher information of the parameters and consolidate
@@ -197,6 +198,7 @@ class Trainer():
         # Set up optimizer
         ckpt_path_to_save = os.path.join(self.config.OUTPUT_DIR, 'task_{}_{}'.format(task_id, task_name), 'ckpt',
                                         'best.ckpt')
+        logging.info('Ckpt to save {}'.format(ckpt_path_to_save))
         self.ckpt_list_of_previous_tasks.append(ckpt_path_to_save)
         for epoch in range(self.start_epoch, self.epochs + 1):
 
@@ -262,7 +264,7 @@ class Trainer():
                         ckpt_path_to_save = ckpt_path_to_save
 
                     )
-                self.ckpt_list_of_previous_tasks.append(ckpt_path_to_save)
+
                 logging.info('Current Best MIN_HTER={}%, AUC={}%'.format(100 * self.val_metrcis['MIN_HTER'],
                                                                          100 * self.val_metrcis['AUC']))
                 if epoch > 20 and train_loss.avg < 0.00001:
@@ -308,6 +310,7 @@ class Trainer():
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}
         self.network.eval()
+
         with torch.no_grad():
             for data in tqdm(test_data_loader, ncols=80):
                 network_input, target, video_ids = data[1], data[2], data[3]
@@ -321,8 +324,6 @@ class Trainer():
                                                                       target['spoofing_label'].numpy(), pred_score,
                                                                       video_ids
                                                                       )
-
-                break
 
         test_results = {
             'scores_gt': gt_dict,
@@ -376,8 +377,6 @@ class Trainer():
     def init_weight(self, ckpt_path):
         logging.info("[*] Initialize model weight from {}".format(ckpt_path))
         ckpt = torch.load(ckpt_path)
-
-
         # self.best_valid_acc = ckpt['best_valid_acc']
         self.network.load_state_dict(ckpt['model_state'])
 

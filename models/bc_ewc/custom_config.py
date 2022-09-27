@@ -22,10 +22,7 @@ _C.DATA.PROTOCOL1.VAL = [   'data_list/REPLAY-ATTACK-TEST.csv', 'data_list/CASIA
                             'data_list/CASIA-SURF-COLOR-TEST.csv', 'data_list/WFFD-P123-TEST.csv',
                             'data_list/WMCA-GRANDTEST-TEST.csv', 'data_list/CASIA-SURF-3DMASK-TEST.csv'
 ]
-# _C.DATA.PROTOCOL1.TASK_NAME = {
-#     1:'ft_REPLAY', 2:'ft_CASIA', 3:'ft_MSU', 4:'ft_HKBU', 5:'ft_OULU', 6:'ft_CSMAD',
-#     7:'ft_CasiaSurf', 8:'ft_WFFD', 9:'ft_WMCA', 10:'ft_Casia3DMask'
-# }
+
 _C.DATA.PROTOCOL1.TASK_NAME = [
      'ft_REPLAY', 'ft_CASIA', 'ft_MSU', 'ft_HKBU', 'ft_OULU', 'ft_CSMAD',
     'ft_CasiaSurf', 'ft_WFFD', 'ft_WMCA', 'ft_Casia3DMask'
@@ -52,6 +49,15 @@ _C.MODEL.CHANNELS.LAB = False
 _C.MODEL.CHANNELS.XYZ = False
 _C.MODEL.FIX_BACKBONE = False
 _C.MODEL.IMAGENET_PRETRAIN = True
+
+"""
+    Keyword for fixing backbones
+    
+    For ResNet, the key word can be layer4 and fc
+    For ViT the keyword can be block 
+"""
+_C.MODEL.FIX_KEYWORDS = ['layer4', 'fc']
+
 
 
 _C.TRAIN = CN()
