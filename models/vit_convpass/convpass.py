@@ -3,7 +3,7 @@ from torch import nn
 import timm
 import math
 from torch.nn import functional as F
-
+from .cdc_matrix import Conv2d_cd_pixel_difference_matrix5x5_unshared
 
 class Conv2d_Hori_Veri_Cross(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,
@@ -78,9 +78,6 @@ class DC_Conv(nn.Module):
         self.conv1 = conv1
         self.conv2 = conv2
 
-
-
-
     def forward(self, x):
         return (self.conv1(x) + self.conv2(x))/2
 
@@ -101,7 +98,7 @@ class Conv2d_cd(nn.Module):
         if math.fabs(self.theta - 0.0) < 1e-8:
             return out_normal
         else:
-            #pdb.set_trace()
+
             [C_out,C_in, kernel_size,kernel_size] = self.conv.weight.shape
             kernel_diff = self.conv.weight.sum(2).sum(2)
             kernel_diff = kernel_diff[:, :, None, None]
@@ -161,6 +158,24 @@ class Convpass(nn.Module):
             nn.init.zeros_(self.adapter_up.weight)
             nn.init.zeros_(self.adapter_up.bias)
 
+
+        elif conv_type == 'cdc_matrix':
+            self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_unshared(dim, dim, 3, 1, 1)
+            if xavier_init:
+                nn.init.xavier_uniform_(self.adapter_conv.conv.weight)
+            else:
+                nn.init.zeros_(self.adapter_conv.conv.weight)
+                self.adapter_conv.conv.weight.data[:, :, 1, 1] += torch.eye(8, dtype=torch.float)
+            # nn.init.zeros_(self.adapter_conv.conv.bias)
+
+            self.adapter_down = nn.Linear(768, dim)  # equivalent to 1 * 1 Conv
+            self.adapter_up = nn.Linear(dim, 768)  # equivalent to 1 * 1 Conv
+            nn.init.xavier_uniform_(self.adapter_down.weight)
+            nn.init.zeros_(self.adapter_down.bias)
+            nn.init.zeros_(self.adapter_up.weight)
+            nn.init.zeros_(self.adapter_up.bias)
+
+
         self.act = QuickGELU()
         self.dropout = nn.Dropout(0.1)
         self.dim = dim
@@ -176,7 +191,8 @@ class Convpass(nn.Module):
         x_patch = x_patch.permute(0, 2, 3, 1).reshape(B, 14 * 14, self.dim)
 
         x_cls = x_down[:, :1].reshape(B, 1, 1, self.dim).permute(0, 3, 1, 2)
-        x_cls = self.adapter_conv(x_cls)
+
+        #x_cls = self.adapter_conv(x_cls)
         x_cls = x_cls.permute(0, 2, 3, 1).reshape(B, 1, self.dim)
 
         x_down = torch.cat([x_cls, x_patch], dim=1)

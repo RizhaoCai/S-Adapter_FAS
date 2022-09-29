@@ -141,7 +141,7 @@ class Trainer():
 
             return self.train_data_loader, self.val_data_loader
     def train(self, ):
-
+        self.get_dataloader()
         if self.config.TRAIN.INIT and os.path.exists(self.config.TRAIN.INIT):
             self.init_weight(self.config.TRAIN.INIT)
 
@@ -226,7 +226,7 @@ class Trainer():
 
             logging.info("Avg Training loss = {} ".format(str(train_loss_avg)))
             # evaluate on validation set'
-            if epoch % self.val_freq == 0:
+            if train_loss.avg < 0.2 and epoch % self.val_freq == 0:
                 with torch.no_grad():
                     val_output = self.validate(epoch, val_data_loader)
 
