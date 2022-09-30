@@ -3,6 +3,10 @@ import torchvision.models as models
 from torch import nn
 from .timm_vit import _create_vit_adapter
 import logging
+from timm.models.vision_transformer import vit_base_patch16_224
+from .convpass import set_Convpass
+
+
 def get_model_from_torchvision(arch_name, imagetnet_pretrain, num_classes):
     """
     resnet18 = models.resnet18(pretrained=True)
@@ -90,6 +94,22 @@ def build_net(config):
                 p.requires_grad = False
 
         return model
+
+    elif 'convpass' in model_arch:
+        # convpass-conv-vit_base_patch16_224
+        backbone_name = model_arch.split('-')[-1]
+        # conv_type: conv, cdc, cdc_matrix_5x5shared, cdc_matrix_4x4unshared, cdc_matrix_5x5unshared
+        conv_type = model_arch.split('-')[-2]
+        if backbone_name == 'vit_base_patch16_224':
+            model = vit_base_patch16_224(imagetnet_pretrain, num_classes=num_classes)  # todo
+
+        if 'cdc' in conv_type:
+            set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=conv_type)
+        elif conv_type == 'conv':
+            set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=True, conv_type=conv_type)
+
+        return model
+
 if __name__ == '__main__':
     pass
 

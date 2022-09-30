@@ -126,8 +126,11 @@ class Trainer():
         self.ckpt_list_of_previous_tasks = []
 
         ewc_lambda = self.config.TRAIN.EWC_LAMBDA
-        ewc_onlne = self.config.TRAIN.EWC_ONLINE
-        ewc_regularizer = EWC(ewc_lambda=ewc_lambda, if_online=ewc_onlne)
+        if ewc_lambda > 0:
+            ewc_onlne = self.config.TRAIN.EWC_ONLINE
+            ewc_regularizer = EWC(ewc_lambda=ewc_lambda, if_online=ewc_onlne)
+        else:
+            ewc_regularizer = None
 
         self.init_weight(self.config.TRAIN.INIT)
         self.ckpt_list_of_previous_tasks.append(self.config.TRAIN.INIT)
@@ -180,7 +183,7 @@ class Trainer():
             consolidate = True
             best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[task_id]
             self.init_weight(best_ckpt_for_last_task)
-            if consolidate and task_id < len(train_data_list):
+            if consolidate and task_id < len(train_data_list) and ewc_regularizer is not None:
                 # estimate the fisher information of the parameters and consolidate
                 # them in the network.
                 logging.info(
@@ -218,8 +221,10 @@ class Trainer():
                     ce_loss = self._train_one_batch(batch_data=batch_data,
                                                  optimizer=self.optimizer
                                                  )
-
-                    ewc_loss = ewc_regularizer.regularize(network.named_parameters())
+                    if not self.config.TRAIN.EWC_LAMBDA>0.0 or ewc_regularizer is None:
+                        ewc_loss = ewc_regularizer.regularize(network.named_parameters())
+                    else:
+                        ewc_loss = torch.tensor(0.0, device=ce_loss.device)
 
                     loss = ce_loss + ewc_loss
 
@@ -306,6 +311,10 @@ class Trainer():
         return frame_metric_dict
 
     def test(self, test_data_loader):
+        if test_data_loader is None:
+            data_path = self.config.DATA.TEST
+            batch_size = self.config.TEST.BATCH_SIZE
+            dataset, test_data_loader = self.get_dataloader(data_path, batch_size, if_train=False)
         avg_test_loss = AverageMeter()
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}
