@@ -3,8 +3,8 @@ from torch import nn
 import timm
 import math
 from torch.nn import functional as F
-from .cdc_matrix import Conv2d_cd_pixel_difference_matrix5x5_unshared
-
+from .cdc_matrix import Conv2d_cd_pixel_difference_matrix5x5_unshared, Conv2d_cd_pixel_difference_matrix5x5_shared, Conv2d_cd_pixel_difference_matrix4x4_unshared
+import logging
 class Conv2d_Hori_Veri_Cross(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,
                  padding=1, dilation=1, groups=1, bias=False, theta=0.7):
@@ -159,8 +159,15 @@ class Convpass(nn.Module):
             nn.init.zeros_(self.adapter_up.bias)
 
 
-        elif conv_type == 'cdc_matrix':
-            self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_unshared(dim, dim, 3, 1, 1)
+        elif 'cdc_matrix' in conv_type:
+            if conv_type == 'cdc_matrix_5x5unshared':
+                self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_unshared(dim, dim, 3, 1, 1)
+            elif conv_type == 'cdc_matrix_5x5shared':
+                self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_shared(dim, dim, 3, 1, 1)
+            elif conv_type == 'cdc_matrix_4x4unshared':
+                self.adapter_conv = Conv2d_cd_pixel_difference_matrix4x4_unshared(dim, dim, 3, 1, 1)
+
+
             if xavier_init:
                 nn.init.xavier_uniform_(self.adapter_conv.conv.weight)
             else:

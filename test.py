@@ -147,8 +147,6 @@ def main(config):
     testing_output_dir = os.path.join(config.OUTPUT_DIR, 'test', config.TEST.TAG)
     thr = config.TEST.THR
 
-    test_data_loader = trainer.get_dataloader()
-    # test_data_loader = trainer.test_data_loader
 
     npz_file_path = os.path.join(testing_output_dir, 'scores.npz')
 
@@ -156,7 +154,7 @@ def main(config):
         npz = np.load(npz_file_path)
         scores_pred, scores_gt = npz['scores_pred'], npz['scores_gt']
     else:
-        test_results = trainer.test(test_data_loader)
+        test_results = trainer.test(test_data_loader=None)
         scores_pred, scores_gt = test_results['scores_pred'], test_results['scores_gt']
         np.savez(npz_file_path, scores_pred=scores_pred, scores_gt=scores_gt)
 

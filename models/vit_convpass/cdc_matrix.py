@@ -78,7 +78,7 @@ class SpatialAttention(nn.Module):
         return self.sigmoid(x)
 
 
-'''
+
 class Conv2d_cd_pixel_difference_matrix5x5_shared(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,
                  padding=1, bias=False, theta=0.7):
@@ -93,7 +93,9 @@ class Conv2d_cd_pixel_difference_matrix5x5_shared(nn.Module):
         out_normal = self.conv(x)
 
         if math.fabs(self.theta - 0.0) < 1e-8:
-            return out_normal 
+            return out_normal
+        elif x.shape[1]<2 or x.shape[2]<2:
+            return out_normal
         else:
             #pdb.set_trace()
 
@@ -127,7 +129,7 @@ class Conv2d_cd_pixel_difference_matrix5x5_shared(nn.Module):
 
 
             return (out_normal+out_normal_lt+out_normal_mt+out_normal_rt+out_normal_lm+out_normal_mr+out_normal_ld+out_normal_md+out_normal_rd) - self.theta * (out_diff_cent+out_diff_lt+out_diff_mt+out_diff_rt+out_diff_lm+out_diff_mr+out_diff_ld+out_diff_md+out_diff_rd)
-'''
+
 
 
 class Conv2d_cd_pixel_difference_matrix5x5_unshared(nn.Module):
@@ -245,6 +247,9 @@ class Conv2d_cd_pixel_difference_matrix4x4_unshared(nn.Module):
         out_normal = self.conv(x)
 
         if math.fabs(self.theta - 0.0) < 1e-8:
+            return out_normal
+
+        elif x.shape[1]<2 or x.shape[2]<2:
             return out_normal
         else:
             # pdb.set_trace()
