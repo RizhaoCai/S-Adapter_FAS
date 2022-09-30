@@ -221,10 +221,10 @@ class Trainer():
                     ce_loss = self._train_one_batch(batch_data=batch_data,
                                                  optimizer=self.optimizer
                                                  )
-                    if not self.config.TRAIN.EWC_LAMBDA>0.0 or ewc_regularizer is None:
-                        ewc_loss = ewc_regularizer.regularize(network.named_parameters())
-                    else:
+                    if ewc_regularizer is None:
                         ewc_loss = torch.tensor(0.0, device=ce_loss.device)
+                    else:
+                        ewc_loss = ewc_regularizer.regularize(network.named_parameters())
 
                     loss = ce_loss + ewc_loss
 
