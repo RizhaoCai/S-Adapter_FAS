@@ -45,6 +45,7 @@ def build_net(config):
     model_arch = config.MODEL.ARCH
     fix_backbone = config.MODEL.FIX_BACKBONE
     num_classes = config.MODEL.NUM_CLASSES # Default 2
+    fix_head = config.MODEL.FIX_HEAD # Whether to fix the classification head ()
 
     if 'net' in model_arch.lower() and model_arch.lower() in models.__dict__.keys():
         model =  get_model_from_torchvision(model_arch, imagetnet_pretrain, num_classes)
@@ -52,10 +53,19 @@ def build_net(config):
             logging.info('Fix Backbone')
             for name, p in model.named_parameters():
                 # import pdb; pdb.set_trace()
-                if 'fc' in name or 'layer4' in name:
-                    p.requires_grad = True
-                else:
-                    p.requires_grad = False
+                if fix_head:
+                    if 'layer4' in name:
+                        p.requires_grad = True
+                    else:
+                        p.requires_grad = False
+                elif not fix_head:
+                    if 'fc' in name or 'layer4' in name:
+                        p.requires_grad = True
+                    else:
+                        p.requires_grad = False
+
+
+
         return model
     elif 'timm' in model_arch:
         backbone_name = model_arch.split('-')[-1]
@@ -64,12 +74,17 @@ def build_net(config):
 
         if fix_backbone:
             for name, p in model.named_parameters():
-                # import pdb; pdb.set_trace()
-                if 'head' in name or 'blocks.11' in name or name == 'name.bias' or name == 'name.weight':
-                    p.requires_grad = True
-                    # import pdb; pdb.set_trace()
-                else:
-                    p.requires_grad = False
+                if not fix_head:
+                    if 'head' in name or 'blocks.11' in name or name == 'norm.bias' or name == 'norm.weight':
+                        p.requires_grad = True
+                    else:
+                        p.requires_grad = False
+
+                if fix_head:
+                    if 'blocks.11' in name or name == 'norm.bias' or name == 'norm.weight':
+                        p.requires_grad = True
+                    else:
+                        p.requires_grad = False
         return model
 
     elif 'adapter' in model_arch:
@@ -88,10 +103,17 @@ def build_net(config):
             model = _vit_base_patch16_224(imagetnet_pretrain, num_classes=num_classes)
         for name, p in model.named_parameters():
             # import pdb; pdb.set_trace()
-            if 'adapter' in name or 'head' in name:
-                p.requires_grad = True
-            else:
-                p.requires_grad = False
+            if fix_backbone and not fix_head:
+                if 'adapter' in name or 'head' in name:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
+
+            if fix_backbone and fix_head:
+                if 'adapter' in name:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
 
         return model
 
@@ -107,6 +129,19 @@ def build_net(config):
             set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=conv_type)
         elif conv_type == 'conv':
             set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=True, conv_type=conv_type)
+
+        for name, p in model.named_parameters():
+            if fix_backbone and not fix_head:
+                if 'adapter' in name or 'head' in name:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
+
+            if fix_backbone and fix_head:
+                if 'adapter' in name:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
 
         return model
 

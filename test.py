@@ -107,6 +107,8 @@ def metric_report_from_dict(scores_pred_dict, scores_gt_dict, thr):
 
 
 def metric_report(scores_pred, scores_gt, thr):
+    # make ground label scores_gt binary
+    scores_gt = scores_gt.astype(bool).astype(np.int)
 
     fpr, tpr, threshold = metrics.roc_curve(scores_gt, scores_pred)
     auc = metrics.auc(fpr, tpr)

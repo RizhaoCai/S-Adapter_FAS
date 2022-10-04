@@ -8,11 +8,12 @@ from .convpass import set_Convpass
 
 
 def build_net(arch_name, pretrained, **kwargs):
+    num_classes = kwargs['num_classes']
     if arch_name == 'vit_base_patch16_224':
-        model = vit_base_patch16_224(pretrained, num_classes=2) # todo
+        model = vit_base_patch16_224(pretrained, num_classes=num_classes) # todo
 
     if 'cdc' in kwargs['conv_type']:
-        set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=kwargs['conv_type'])
+        set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=kwargs['conv_type'], cdc_theta=kwargs['cdc_theta'])
     else:
         set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=True, conv_type=kwargs['conv_type'])
     #import pdb; pdb.set_trace()

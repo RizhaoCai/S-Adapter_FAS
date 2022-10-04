@@ -83,9 +83,12 @@ class Trainer():
         self.train_mode = True
 
         kwargs = {
-            'conv_type': self.config.MODEL.CONV
+            'conv_type': self.config.MODEL.CONV,
+            'num_classes': self.config.MODEL.NUM_CLASSES,
+            'cdc_theta': self.config.MODEL.CDC_THETA
         }
         self.network = build_net(arch_name=config.MODEL.ARCH, pretrained=config.MODEL.IMAGENET_PRETRAIN, **kwargs)
+
         if self.config.CUDA:
             self.network.cuda()
 
@@ -99,8 +102,12 @@ class Trainer():
 
     def get_dataset(self, data_file_list, transform):
         datasets = []
+        if self.config.MODEL.NUM_CLASSES>2:
+            if_binary = False
+        else:
+            if_binary = True
         for data_list_path in data_file_list:
-            datasets.append(get_image_dataset_from_list(data_list_path, transform))
+            datasets.append(get_image_dataset_from_list(data_list_path, transform, if_binary_label=if_binary))
         return torch.utils.data.ConcatDataset(datasets)
 
 
@@ -123,7 +130,7 @@ class Trainer():
             assert config.DATA.TEST, "Please provide at least a data_list"
             test_dataset = self.get_dataset(config.DATA.TEST, test_data_transform)
             self.test_data_loader = torch.utils.data.DataLoader(test_dataset, test_batch_size, num_workers=num_workers,
-                                                                shuffle=False, drop_last=True)
+                                                                shuffle=True, drop_last=True)
             return self.test_data_loader
 
         else:
@@ -220,6 +227,7 @@ class Trainer():
 
                     self.global_step += 1
 
+
                 self.lr_scheduler.step()
 
             train_loss_avg = train_loss.avg
@@ -255,7 +263,7 @@ class Trainer():
         # compute losses for differentiable modules
 
         loss = self._total_loss_caculation(cls_out, target)
-
+        # import pdb; pdb.set_trace()
         # compute gradients and update SGD
         optimizer.zero_grad()
         loss.backward()
@@ -286,6 +294,7 @@ class Trainer():
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}
         self.network.eval()
+
         with torch.no_grad():
             for data in tqdm(test_data_loader, ncols=80):
                 network_input, target, video_ids = data[1], data[2], data[3]
@@ -368,7 +377,7 @@ class Trainer():
 
     def _get_score_from_prob(self, output_prob):
         output_scores = torch.softmax(output_prob, 1)
-        output_scores = output_scores.cpu().numpy()[:, 1]
+        output_scores = 1-output_scores.cpu().numpy()[:, 0] # Probability to be spoofing
         return output_scores
 
     def load_batch_data(self):

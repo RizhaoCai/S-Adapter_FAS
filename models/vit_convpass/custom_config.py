@@ -15,6 +15,8 @@ _C.DATA.VAL = ['data/data_list/REPLAY-ALL.csv']
 _C.MODEL = CN()
 _C.MODEL.ARCH = 'vit_base_patch16_224'
 _C.MODEL.CONV = 'conv' # cdc
+_C.MODEL.CDC_THETA = 0.7 # for cdc conv or cdc 5x5 unshared
+
 
 
 

@@ -121,9 +121,8 @@ class QuickGELU(nn.Module):
 
 
 class Convpass(nn.Module):
-    def __init__(self, dim=8, xavier_init=False, conv_type='conv'):
+    def __init__(self, dim=8, xavier_init=False, conv_type='conv', cdc_theta=0.7):
         super().__init__()
-
 
         if conv_type=='conv':
             self.adapter_conv = nn.Conv2d(dim, dim, 3, 1, 1)
@@ -143,7 +142,8 @@ class Convpass(nn.Module):
             nn.init.zeros_(self.adapter_up.bias)
 
         elif conv_type=='cdc':
-            self.adapter_conv = Conv2d_cd(dim, dim, 3, 1, 1)
+            logging.info('cdc_theta={}'.format(cdc_theta))
+            self.adapter_conv = Conv2d_cd(dim, dim, 3, 1, 1, theta=cdc_theta)
             if xavier_init:
                 nn.init.xavier_uniform_(self.adapter_conv.conv.weight)
             else:
@@ -160,12 +160,13 @@ class Convpass(nn.Module):
 
 
         elif 'cdc_matrix' in conv_type:
+            logging.info('cdc_theta={}'.format(cdc_theta))
             if conv_type == 'cdc_matrix_5x5unshared':
-                self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_unshared(dim, dim, 3, 1, 1)
+                self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_unshared(dim, dim, 3, 1, 1, theta=cdc_theta)
             elif conv_type == 'cdc_matrix_5x5shared':
-                self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_shared(dim, dim, 3, 1, 1)
+                self.adapter_conv = Conv2d_cd_pixel_difference_matrix5x5_shared(dim, dim, 3, 1, 1, theta=cdc_theta)
             elif conv_type == 'cdc_matrix_4x4unshared':
-                self.adapter_conv = Conv2d_cd_pixel_difference_matrix4x4_unshared(dim, dim, 3, 1, 1)
+                self.adapter_conv = Conv2d_cd_pixel_difference_matrix4x4_unshared(dim, dim, 3, 1, 1, theta=cdc_theta)
 
 
             if xavier_init:
@@ -211,19 +212,19 @@ class Convpass(nn.Module):
         return x_up
 
 
-def set_Convpass(model, method, dim=8, s=1, xavier_init=False, conv_type='conv'):
+def set_Convpass(model, method, dim=8, s=1, xavier_init=False, conv_type='conv', cdc_theta=0.7):
 
     if method == 'convpass':
 
         for _ in model.children():
             if type(_) == timm.models.vision_transformer.Block:
-                _.adapter_attn = Convpass(dim, xavier_init, conv_type=conv_type)
-                _.adapter_mlp = Convpass(dim, xavier_init,conv_type=conv_type)
+                _.adapter_attn = Convpass(dim, xavier_init, conv_type=conv_type, cdc_theta=cdc_theta)
+                _.adapter_mlp = Convpass(dim, xavier_init,conv_type=conv_type, cdc_theta=cdc_theta)
                 _.s = s
                 bound_method = forward_block.__get__(_, _.__class__)
                 setattr(_, 'forward', bound_method)
             elif len(list(_.children())) != 0:
-                set_Convpass(_, method, dim, s, xavier_init, conv_type=conv_type)
+                set_Convpass(_, method, dim, s, xavier_init, conv_type=conv_type, cdc_theta=cdc_theta)
     else:
         for _ in model.children():
             if type(_) == timm.models.vision_transformer.Block:
