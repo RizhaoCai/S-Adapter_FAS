@@ -33,3 +33,8 @@ _C.MODEL.CHANNELS.XYZ = False
 
 _C.MODEL.IMAGENET_PRETRAIN = True
 _C.MODEL.FIX_BACKBONE = False # True for fixing the backbone but not the adapter
+
+
+_C.TRAIN = CN()
+
+# _C.TRAIN.CONTRAST_ALPHA = 0.0 # if 0.0: then no contrastive_loss

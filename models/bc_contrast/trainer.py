@@ -105,7 +105,7 @@ class Trainer():
 
         dataset = self.get_dataset(data_path, data_transform)
         data_loader = torch.utils.data.DataLoader(dataset, batch_size, num_workers=num_workers,
-                                                            shuffle=False, drop_last=if_train)
+                                                            shuffle=True, drop_last=if_train)
 
         return dataset, data_loader
 
@@ -513,7 +513,7 @@ class Trainer():
 
     def _get_score_from_prob(self, output_prob):
         output_scores = torch.softmax(output_prob, 1)
-        output_scores = output_scores.cpu().numpy()[:, 1] # The probability to be spoofing
+        output_scores = 1-output_scores.cpu().numpy()[:, 0] # The probability to be spoofing
         return output_scores
 
     def load_batch_data(self):

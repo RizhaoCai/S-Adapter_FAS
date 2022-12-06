@@ -23,6 +23,7 @@ torch.cuda.empty_cache()
 from tensorboardX import SummaryWriter
 
 from FAS_DataManager.get_dataset import get_image_dataset_from_list
+from .sup_contrastive_loss import SupConLoss
 from .ewc import EWC
 class Trainer():
     """
@@ -79,7 +80,8 @@ class Trainer():
         self.lr_patience = self.config.TRAIN.LR_PATIENCE
         self.train_patience = self.config.TRAIN.PATIENCE
 
-        self.network = build_net(self.config)
+        self.network = build_net(config)
+
         if self.config.CUDA:
             # self.network = torch.nn.DataParallel(self.network )
             self.network.cuda()
@@ -105,7 +107,7 @@ class Trainer():
 
         dataset = self.get_dataset(data_path, data_transform)
         data_loader = torch.utils.data.DataLoader(dataset, batch_size, num_workers=num_workers,
-                                                            shuffle=False, drop_last=if_train)
+                                                            shuffle=True, drop_last=if_train)
 
         return dataset, data_loader
 
@@ -134,6 +136,9 @@ class Trainer():
 
         self.init_weight(self.config.TRAIN.INIT)
         self.ckpt_list_of_previous_tasks.append(self.config.TRAIN.INIT)
+
+        # TODO: temperature
+        self.contrastive_loss_func = SupConLoss()
         for task_id in range(1, num_of_tasks+1):
 
             # 0. task
@@ -253,6 +258,35 @@ class Trainer():
 
         alpha = self.config.TRAIN.CONTRAST_ALPHA
 
+        self.fc_feature = None
+
+        def hook_feature(module, input, output):
+            self.fc_feature = input
+
+        if 'net' in self.config.MODEL.ARCH:
+            hook_handle = network.fc.register_forward_hook(hook_feature)
+            fc_layer_weight = network.fc.weight.data.detach()
+
+        elif 'timm' in self.config.MODEL.ARCH or 'adapter' in self.config.MODEL.ARCH or 'convpass' in self.config.MODEL.ARCH:
+            hook_handle = network.head.register_forward_hook(hook_feature)
+            fc_layer_weight = network.head.weight.data.detach()
+
+        if self.config.TRAIN.CONTRAST_WITH_PROTOTYPE:
+            logging.info('Load prototype from previous task')
+
+
+            prototype_real = fc_layer_weight[0].unsqueeze(0)
+            prototype_fake = fc_layer_weight[1].unsqueeze(0)
+
+            #prototype_label = torch.tensor([0,1])
+            if self.config.MODEL.NUM_CLASSES>2 and fc_layer_weight.shape[0]>2:
+                logging.info('Getting mask information')
+                prototype_fake_mask = fc_layer_weight[2].unsqueeze(0)
+
+
+
+        # prototype_label=prototype_label.cuda()
+
         for epoch in range(self.start_epoch, self.epochs + 1):
 
             if self.tensorboard:
@@ -265,25 +299,7 @@ class Trainer():
             self.network.train()
             num_train = len(train_data_loader) * self.batch_size
 
-            fc_feature = []
-            def hook_feature(module, input, output):
-                fc_feature.append(input)
 
-
-            if 'net' in self.config.MODEL.ARCH:
-                hook_handle = network.fc.register_forward_hook(hook_feature)
-                fc_layer_weight = network.fc.weight.data.detach()
-                prototype_real = fc_layer_weight[0]
-                prototype_fake = fc_layer_weight[1]
-
-
-
-            elif 'timm' in self.config.MODEL.ARCH or 'adapter' in self.config.MODEL.ARCH or 'convpass' in self.config.MODEL.ARCH:
-                hook_handle = network.head.register_forward_hook(hook_feature)
-                fc_layer_weight = network.head.weight.data.detach()
-
-                prototype_real = fc_layer_weight[0]
-                prototype_fake = fc_layer_weight[1]
 
 
             with tqdm(total=num_train, ncols=80) as pbar:
@@ -295,12 +311,32 @@ class Trainer():
 
                     ce_loss = self.loss(cls_out, spoofing_label)  # CrossEntropyLoss
                     # ewc_loss = ewc_regularizer.regularize(network.named_parameters())
-                    feature = fc_feature.pop()[0]#feature_list.pop()[0]
+                    feature = self.fc_feature[0]
 
                     # contrastive_loss_real, contrastive_loss_fake = self.contrastive_loss(prototype_real, prototype_fake, feature, spoofing_label, temperature=self.config.TRAIN.CONTRAST_TEMPERATURE)
-                    contrastive_loss = self.contrastive_loss(prototype_real, prototype_fake, feature, spoofing_label, temperature=self.config.TRAIN.CONTRAST_TEMPERATURE)
-                    contrastive_loss_fake = torch.tensor(0.0)
-                    contrastive_loss_real = contrastive_loss
+                    # contrastive_loss = self.contrastive_loss(prototype_real, prototype_fake, feature, spoofing_label, temperature=self.config.TRAIN.CONTRAST_TEMPERATURE)
+                    #import pdb;
+                    #pdb.set_trace()
+                    # all_features = torch.cat([feature, protocotypes], dim=0)
+                    # all_features_norm = all_features/torch.norm(all_features, dim=1)
+                    all_label = spoofing_label
+                    all_features = feature
+                    if self.config.TRAIN.CONTRAST_WITH_PROTOTYPE:
+                        num_real_samples = (spoofing_label==0).sum()
+                        num_2d_attack_samples = (spoofing_label == 1).sum()
+                        num_3d_attack_samples = (spoofing_label == 2).sum()
+                        if num_real_samples>0:
+                            all_features = torch.cat([all_features, prototype_real], dim=0)
+                            all_label = torch.cat([all_label, torch.tensor([0]).cuda()], dim=0)
+                        if num_2d_attack_samples>0:
+                            all_features = torch.cat([all_features, prototype_fake], dim=0)
+                            all_label = torch.cat([all_label, torch.tensor([1]).cuda()], dim=0)
+                        if num_3d_attack_samples>0:
+                            all_features = torch.cat([all_features, prototype_fake_mask], dim=0)
+                            all_label = torch.cat([all_label, torch.tensor([2]).cuda()], dim=0)
+                    all_features_norm = torch.nn.functional.normalize(all_features, dim=1).unsqueeze(1)
+                    contrastive_loss = self.contrastive_loss_func(all_features_norm, all_label)
+
                     # contrastive_loss = (contrastive_loss_real + contrastive_loss_fake)
                     total_loss = ce_loss + alpha*contrastive_loss # ewc_loss
                     #import pdb; pdb.set_trace()
@@ -308,12 +344,9 @@ class Trainer():
                     total_loss.backward()
                     self.optimizer.step()
 
-
-                    loss = ce_loss + alpha*contrastive_loss # ewc_loss
-
                     pbar.set_description(
                         (
-                            " loss={:.4f}|ce_loss={:.4f}|contra_loss_real={:.4f}|contra_loss_fake={:.4f} ".format(loss.item(), ce_loss.item(), contrastive_loss_real.item(),contrastive_loss_fake.item()
+                            " loss={:.4f}|ce_loss={:.4f}|contra_loss_real={:.4f}|".format(total_loss.item(), ce_loss.item(), contrastive_loss.item()
                                                          )
                         )
                     )
@@ -321,11 +354,10 @@ class Trainer():
                     train_loss.update(ce_loss.item(), self.batch_size)
                     # log to tensorboard
                     if self.tensorboard:
-                        self.tensorboard.add_scalar('task{}/loss/train_total'.format(task_id), loss.item(), self.global_step)
+                        self.tensorboard.add_scalar('task{}/loss/train_total'.format(task_id), total_loss.item(), self.global_step)
                         self.tensorboard.add_scalar('task{}loss/train_ce_loss'.format(task_id), ce_loss.item(), self.global_step)
-                        self.tensorboard.add_scalar('task{}/loss/train_contra_loss_real'.format(task_id), contrastive_loss_real.item(), self.global_step)
-                        self.tensorboard.add_scalar('task{}/loss/train_contra_loss_fake'.format(task_id),
-                                                    contrastive_loss_fake.item(), self.global_step)
+                        self.tensorboard.add_scalar('task{}/loss/train_contra_loss'.format(task_id), contrastive_loss.item(), self.global_step)
+
 
                     self.global_step += 1
 
@@ -336,8 +368,9 @@ class Trainer():
 
             logging.info("Avg Training CE loss = {} ".format(str(train_loss_avg)))
             # evaluate on validation set'
-            hook_handle.remove()
-            if (epoch+1) % self.val_freq == 0:
+
+
+            if self.config.TRAIN.WITH_VAL and (epoch+1) % self.val_freq == 0:
                 with torch.no_grad():
                     val_output = self.validate(epoch, val_data_loader)
 
@@ -364,6 +397,19 @@ class Trainer():
                 if epoch > 20 and train_loss.avg < 0.00005:
                     logging.info("Early stop since Avg Training loss<0.00001. ".format(str(train_loss_avg)))
                     return
+            elif not self.config.TRAIN.WITH_VAL and epoch == self.config.TRAIN.EPOCHS:
+                self.save_checkpoint(
+                    {'epoch': epoch,
+                     'val_metrics': self.val_metrcis,
+                     'global_step': self.global_step,
+                     'model_state': network.state_dict(),
+                     'optim_state': self.optimizer.state_dict(),
+                     'previous_task_ckpt': self.ckpt_list_of_previous_tasks,
+                     'ewc_regularizer': ewc_regularizer
+                     },
+                    ckpt_path_to_save=ckpt_path_to_save
+
+                )
 
 
 
@@ -481,7 +527,7 @@ class Trainer():
 
     def _get_score_from_prob(self, output_prob):
         output_scores = torch.softmax(output_prob, 1)
-        output_scores = output_scores.cpu().numpy()[:, 1] # The probability to be spoofing
+        output_scores = 1-output_scores.cpu().numpy()[:, 0] # The probability to be spoofing
         return output_scores
 
     def load_batch_data(self):

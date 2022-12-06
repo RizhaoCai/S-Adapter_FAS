@@ -21,7 +21,7 @@ def build_net(arch_name, pretrained, **kwargs):
     return model
 
 if __name__ == '__main__':
-    import torch
+    import  torch
     model = build_net('vit_base_patch16_224', pretrained=True, conv_type='cdc_matrix')
     x=torch.rand(2,3,224,224)
     y=model(x)

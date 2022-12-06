@@ -290,6 +290,14 @@ class Trainer():
         return frame_metric_dict
 
     def test(self, test_data_loader):
+        if test_data_loader is None:
+            batch_size = self.config.TEST.BATCH_SIZE
+            num_workers = self.config.DATA.NUM_WORKERS
+
+            test_data_transform = VisualTransform(self.config)
+            dataset = self.get_dataset(self.config.DATA.TEST, test_data_transform)
+            test_data_loader = torch.utils.data.DataLoader(dataset, batch_size, num_workers=num_workers,
+                                                                shuffle=True, drop_last=False)
         avg_test_loss = AverageMeter()
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}

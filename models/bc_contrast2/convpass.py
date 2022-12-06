@@ -213,7 +213,7 @@ class Convpass(nn.Module):
         return x_up
 
 
-def set_Convpass(model, method, dim=8, s=1, xavier_init=False, conv_type='conv', cdc_theta=0.7):
+def set_Convpass(model, method, dim=8, s=1, xavier_init=False, conv_type='conv',cdc_theta=0.7):
 
     if method == 'convpass':
 

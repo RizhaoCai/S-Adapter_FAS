@@ -46,6 +46,7 @@ def build_net(config):
     fix_backbone = config.MODEL.FIX_BACKBONE
     num_classes = config.MODEL.NUM_CLASSES # Default 2
     fix_head = config.MODEL.FIX_HEAD # Whether to fix the classification head ()
+    cdc_theta = config.MODEL.CDC_THETA
 
     if 'net' in model_arch.lower() and model_arch.lower() in models.__dict__.keys():
         model =  get_model_from_torchvision(model_arch, imagetnet_pretrain, num_classes)
@@ -126,9 +127,9 @@ def build_net(config):
             model = vit_base_patch16_224(imagetnet_pretrain, num_classes=num_classes)  # todo
 
         if 'cdc' in conv_type:
-            set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=conv_type)
+            set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=conv_type, cdc_theta=cdc_theta)
         elif conv_type == 'conv':
-            set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=True, conv_type=conv_type)
+            set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=True, conv_type=conv_type )
 
         for name, p in model.named_parameters():
             if fix_backbone and not fix_head:

@@ -30,6 +30,7 @@ def default_argument_parser():
     parser.add_argument("--config", default="", metavar="FILE", required=True, help="path to config file")
     parser.add_argument("--trainer", default="", required=True, help="trainer")
     parser.add_argument("--debug", action="store_true", help="enable debug mode")
+    parser.add_argument("--overwrite", action="store_true", help="If true, overwrite existed results")
     #
     # parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
     parser.add_argument(
@@ -108,7 +109,7 @@ def metric_report_from_dict(scores_pred_dict, scores_gt_dict, thr):
 
 def metric_report(scores_pred, scores_gt, thr):
     # make ground label scores_gt binary
-    scores_gt = scores_gt.astype(bool).astype(np.int)
+    scores_gt = scores_gt.astype(bool).astype(int)
 
     fpr, tpr, threshold = metrics.roc_curve(scores_gt, scores_pred)
     auc = metrics.auc(fpr, tpr)
@@ -137,7 +138,7 @@ def metric_report(scores_pred, scores_gt, thr):
     }
     return metric_dict
 
-def main(config):
+def main(config, args):
     # Ensure directories are setup
     # We feed network_config via unparsed_args so that it is flexible to deal with different models
     global trainer_lib
@@ -149,9 +150,12 @@ def main(config):
     testing_output_dir = os.path.join(config.OUTPUT_DIR, 'test', config.TEST.TAG)
     thr = config.TEST.THR
 
+    test_frame_metrics_csv = os.path.join(testing_output_dir, 'test_frame_metrics.csv')
+    if os.path.exists(test_frame_metrics_csv) and not args.overwrite:
+        logging.info("Results already exist. Do not overwrite and exit.")
+        exit()
 
     npz_file_path = os.path.join(testing_output_dir, 'scores.npz')
-
     if config.TEST.NO_INFERENCE:
         npz = np.load(npz_file_path)
         scores_pred, scores_gt = npz['scores_pred'], npz['scores_gt']
@@ -170,7 +174,7 @@ def main(config):
     logging.info("Frame level metrics:\n"+str(df_frame))
     logging.info("Video level metrics:\n"+str(df_video))
     # For better archive
-    df_frame.to_csv(os.path.join(testing_output_dir, 'test_frame_metrics.csv'))
+    df_frame.to_csv(test_frame_metrics_csv)
     df_video.to_csv(os.path.join(testing_output_dir, 'test_video_metrics.csv'))
 
 
@@ -181,7 +185,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # pdb.set_trace()
     trainer_lib, config = setup(args)
-    main(config)
+    main(config, args)
 
 
 

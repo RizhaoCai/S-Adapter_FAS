@@ -93,9 +93,8 @@ class Trainer():
         return torch.utils.data.ConcatDataset(datasets)
 
 
-    def get_dataloader(self, data_path, batch_size, if_train=False):
+    def get_dataloader(self, data_path, batch_size, num_workers, if_train=False):
         config = self.config
-        num_workers = 0 if config.DEBUG else config.DATA.NUM_WORKERS
 
         if if_train:
             aug_transform = get_augmentation_transforms(config)
@@ -105,7 +104,7 @@ class Trainer():
 
         dataset = self.get_dataset(data_path, data_transform)
         data_loader = torch.utils.data.DataLoader(dataset, batch_size, num_workers=num_workers,
-                                                            shuffle=False, drop_last=if_train)
+                                                            shuffle=True, drop_last=if_train)
 
         return dataset, data_loader
 
@@ -120,6 +119,24 @@ class Trainer():
             protocol_task_name = self.config.DATA.PROTOCOL1.TASK_NAME
         elif protocol==2:
             train_data_list = self.config.DATA.PROTOCOL2.TRAIN
+            val_data_list = self.config.DATA.PROTOCOL2.VAL
+            protocol_task_name = self.config.DATA.PROTOCOL2.TASK_NAME
+
+        elif protocol == 105:
+            train_data_list = self.config.DATA.PROTOCOL1.TRAIN_5SHOT
+            val_data_list = self.config.DATA.PROTOCOL1.VAL
+            protocol_task_name = self.config.DATA.PROTOCOL1.TASK_NAME
+        elif protocol == 125:
+            train_data_list = self.config.DATA.PROTOCOL1.TRAIN_25SHOT
+            val_data_list = self.config.DATA.PROTOCOL1.VAL
+            protocol_task_name = self.config.DATA.PROTOCOL1.TASK_NAME
+
+        elif protocol == 205:
+            train_data_list = self.config.DATA.PROTOCOL2.TRAIN_5SHOT
+            val_data_list = self.config.DATA.PROTOCOL2.VAL
+            protocol_task_name = self.config.DATA.PROTOCOL2.TASK_NAME
+        elif protocol == 225:
+            train_data_list = self.config.DATA.PROTOCOL2.TRAIN_25SHOT
             val_data_list = self.config.DATA.PROTOCOL2.VAL
             protocol_task_name = self.config.DATA.PROTOCOL2.TASK_NAME
 
@@ -140,12 +157,14 @@ class Trainer():
             task_name = protocol_task_name[task_id-1]
             # 1. Set up data
             train_batch_size = self.config.DATA.BATCH_SIZE
-            test_batch_size = self.config.TEST.BATCH_SIZE
+            train_num_workers = self.config.DATA.NUM_WORKERS
+            test_batch_size = self.config.DATA.VAL_BATCH_SIZE
+            val_num_workers = self.config.DATA.VAL_NUM_WORKERS
             train_data_path = train_data_list[task_id-1]
             val_data_path = val_data_list[task_id-1]
 
-            train_dataset, train_data_loader = self.get_dataloader([train_data_path], train_batch_size, if_train=True)
-            val_dataset, val_data_loader = self.get_dataloader([val_data_path], test_batch_size, if_train=False)
+            train_dataset, train_data_loader = self.get_dataloader([train_data_path], train_batch_size, train_num_workers, if_train=True)
+            val_dataset, val_data_loader = self.get_dataloader([val_data_path], test_batch_size, val_num_workers, if_train=False)
 
 
             if self.config.TRAIN.OPTIM.TYPE == 'SGD':
@@ -178,21 +197,26 @@ class Trainer():
 
 
             logging.info('Start task: {} {}'.format(task_id, task_name))
-            self.train_a_task( self.network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name)
-            self.val_metrcis['AUC'] = -1
+
             consolidate = True
-            best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[task_id]
-            self.init_weight(best_ckpt_for_last_task)
             if consolidate and task_id < len(train_data_list) and ewc_regularizer is not None:
                 # estimate the fisher information of the parameters and consolidate
                 # them in the network.
                 logging.info(
                     '=> Estimating diagonals of the fisher information matrix...'
                 )
-                fisher_estimation_sample_size = 25
+                fisher_estimation_sample_size = 20
                 ewc_regularizer.update_fisher_optpar(self.network, task_id, train_dataset,
                                                      sample_size=fisher_estimation_sample_size, consolidate=consolidate)
                 logging.info(' Done!')
+
+            self.train_a_task( self.network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name)
+            self.val_metrcis['AUC'] = -1
+
+
+            best_ckpt_for_last_task = self.ckpt_list_of_previous_tasks[task_id]
+            self.init_weight(best_ckpt_for_last_task)
+
 
 
     def train_a_task(self, network, ewc_regularizer, train_data_loader, val_data_loader, task_id, task_name):
@@ -218,14 +242,22 @@ class Trainer():
             with tqdm(total=num_train, ncols=80) as pbar:
                 for i, batch_data in enumerate(train_data_loader):
 
-                    ce_loss = self._train_one_batch(batch_data=batch_data,
-                                                 optimizer=self.optimizer
-                                                 )
+
+                    network_input, target = batch_data[1], batch_data[2]
+
+                    cls_out = self.inference(network_input.cuda())
+                    # compute losses for differentiable modules
+
+                    ce_loss = self._total_loss_caculation(cls_out, target)
+
+
+
                     if ewc_regularizer is None:
                         ewc_loss = torch.tensor(0.0, device=ce_loss.device)
                     else:
                         ewc_loss = ewc_regularizer.regularize(network.named_parameters())
 
+                    # TODO
                     loss = ce_loss + ewc_loss
 
                     pbar.set_description(
@@ -234,6 +266,12 @@ class Trainer():
                                                          )
                         )
                     )
+
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+
+
                     pbar.update(self.batch_size)
                     train_loss.update(loss.item(), self.batch_size)
                     # log to tensorboard
@@ -248,7 +286,9 @@ class Trainer():
 
             logging.info("Avg Training loss = {} ".format(str(train_loss_avg)))
             # evaluate on validation set'
-            if (epoch+1) % self.val_freq == 0:
+
+
+            if self.config.TRAIN.WITH_VAL and (epoch+1) % self.val_freq == 0:
                 with torch.no_grad():
                     val_output = self.validate(epoch, val_data_loader)
 
@@ -271,26 +311,25 @@ class Trainer():
                     )
 
                 logging.info('Current Best MIN_HTER={}%, AUC={}%'.format(100 * self.val_metrcis['MIN_HTER'],
-                                                                         100 * self.val_metrcis['AUC']))
+                                                                      100 * self.val_metrcis['AUC']))
                 if epoch > 20 and train_loss.avg < 0.00001:
                     logging.info("Early stop since Avg Training loss<0.00001. ".format(str(train_loss_avg)))
                     return
+            if not self.config.TRAIN.WITH_VAL and epoch==100:
+                self.save_checkpoint(
+                    {'epoch': epoch,
+                     'val_metrics': self.val_metrcis,
+                     'global_step': self.global_step,
+                     'model_state': network.state_dict(),
+                     'optim_state': self.optimizer.state_dict(),
+                     'previous_task_ckpt': self.ckpt_list_of_previous_tasks,
+                     'ewc_regularizer': ewc_regularizer
+                     },
+                    ckpt_path_to_save=ckpt_path_to_save
 
+                )
+                logging.info('Stop at 100th epoch. Save checkpoint')
 
-    def _train_one_batch(self, batch_data, optimizer):
-        network_input, target = batch_data[1], batch_data[2]
-
-        cls_out = self.inference(network_input.cuda())
-        # compute losses for differentiable modules
-
-        loss = self._total_loss_caculation(cls_out, target)
-
-        # compute gradients and update SGD
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        return loss
 
     def validate(self, epoch, val_data_loader):
         val_results = self.test(val_data_loader)
@@ -314,7 +353,8 @@ class Trainer():
         if test_data_loader is None:
             data_path = self.config.DATA.TEST
             batch_size = self.config.TEST.BATCH_SIZE
-            dataset, test_data_loader = self.get_dataloader(data_path, batch_size, if_train=False)
+            num_workers = self.config.DATA.NUM_WORKERS
+            dataset, test_data_loader = self.get_dataloader(data_path, batch_size, num_workers, if_train=False)
         avg_test_loss = AverageMeter()
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}
@@ -404,7 +444,7 @@ class Trainer():
 
     def _get_score_from_prob(self, output_prob):
         output_scores = torch.softmax(output_prob, 1)
-        output_scores = output_scores.cpu().numpy()[:, 1] # The probability to be spoofing
+        output_scores = 1-output_scores.cpu().numpy()[:, 0] # The probability to be spoofing
         return output_scores
 
     def load_batch_data(self):

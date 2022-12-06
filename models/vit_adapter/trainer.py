@@ -82,7 +82,7 @@ class Trainer():
 
         self.train_mode = True
 
-        self.network = build_net(arch_name=config.MODEL.ARCH, pretrained=config.MODEL.IMAGENET_PRETRAIN)
+        self.network = build_net(arch_name=config.MODEL.ARCH, pretrained=config.MODEL.IMAGENET_PRETRAIN, num_classes=config.MODEL.NUM_CLASSES)
         if self.config.CUDA:
             self.network.cuda()
 
@@ -96,8 +96,12 @@ class Trainer():
 
     def get_dataset(self, data_file_list, transform):
         datasets = []
+        if self.config.MODEL.NUM_CLASSES>2:
+            if_binary = False
+        else:
+            if_binary = True
         for data_list_path in data_file_list:
-            datasets.append(get_image_dataset_from_list(data_list_path, transform))
+            datasets.append(get_image_dataset_from_list(data_list_path, transform, if_binary_label=if_binary))
         return torch.utils.data.ConcatDataset(datasets)
 
 
@@ -120,7 +124,7 @@ class Trainer():
             assert config.DATA.TEST, "Please provide at least a data_list"
             test_dataset = self.get_dataset(config.DATA.TEST, test_data_transform)
             self.test_data_loader = torch.utils.data.DataLoader(test_dataset, test_batch_size, num_workers=num_workers,
-                                                                shuffle=False, drop_last=False)
+                                                                shuffle=True, drop_last=True)
             return self.test_data_loader
 
         else:
@@ -138,9 +142,10 @@ class Trainer():
 
             return self.train_data_loader, self.val_data_loader
     def train(self, ):
-
+        self.get_dataloader()
         if self.config.TRAIN.INIT and os.path.exists(self.config.TRAIN.INIT):
             self.init_weight(self.config.TRAIN.INIT)
+
         if self.config.MODEL.FIX_BACKBONE:
             for name, p in self.network.named_parameters():
                 if 'adapter' in name or 'head' in name:
@@ -279,12 +284,22 @@ class Trainer():
         return frame_metric_dict
 
     def test(self, test_data_loader):
+        if test_data_loader is None:
+            if test_data_loader is None:
+                batch_size = self.config.TEST.BATCH_SIZE
+                num_workers = self.config.DATA.NUM_WORKERS
+
+                test_data_transform = VisualTransform(self.config)
+                dataset = self.get_dataset(self.config.DATA.TEST, test_data_transform)
+                test_data_loader = torch.utils.data.DataLoader(dataset, batch_size, num_workers=num_workers,
+                                                               shuffle=True, drop_last=False)
         avg_test_loss = AverageMeter()
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}
         self.network.eval()
+
         with torch.no_grad():
-            for data in tqdm(test_data_loader):
+            for data in tqdm(test_data_loader, ncols=80):
                 network_input, target, video_ids = data[1], data[2], data[3]
 
                 output_prob = self.inference(network_input.cuda())
@@ -365,7 +380,7 @@ class Trainer():
 
     def _get_score_from_prob(self, output_prob):
         output_scores = torch.softmax(output_prob, 1)
-        output_scores = output_scores.cpu().numpy()[:, 1]
+        output_scores = 1 - output_scores.cpu().numpy()[:, 0]
         return output_scores
 
     def load_batch_data(self):
