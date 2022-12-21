@@ -10,20 +10,26 @@ from .timm_lora import vit_base_patch16_224
 def build_net(arch_name, pretrained, **kwargs):
     num_classes = kwargs['num_classes']
 
+    depth = 12
     model_cfg = {
         'super_LoRA_dim': kwargs['super_LoRA_dim'],
         'super_prompt_tuning_dim': kwargs['super_prompt_tuning_dim'],
         'super_adapter_dim': kwargs['super_adapter_dim'],
         'super_prefix_dim': kwargs['super_prefix_dim'],
+        'depth':12
     }
     if arch_name == 'vit_base_patch16_224':
         model = vit_base_patch16_224(pretrained, **kwargs) # todo
 
-    #if 'cdc' in kwargs['conv_type']:
-    #    set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=False, conv_type=kwargs['conv_type'], cdc_theta=kwargs['cdc_theta'])
-    #else:
-    #    set_Convpass(model, 'convpass', dim=8, s=1, xavier_init=True, conv_type=kwargs['conv_type'])
-    #import pdb; pdb.set_trace()
+    set_sample_config = {
+        'visual_prompt_dim': [kwargs['super_prompt_tuning_dim']] * depth,
+        'lora_dim': [kwargs['super_LoRA_dim']]* depth,
+        'adapter_dim': [kwargs['super_adapter_dim']] * depth,
+        'prefix_dim': [kwargs['super_prefix_dim']] * depth,
+
+    }
+    model.cuda()
+    model.set_sample_config(set_sample_config)
 
     return model
 

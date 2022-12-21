@@ -486,14 +486,17 @@ class VisionTransformer(nn.Module):
         self.attn_drop_rate = attn_drop_rate
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
-        self.blocks = nn.Sequential(*[
+        #lora_dims_ = [0,0,0,0,0,0,0,0,0,0,10]
+        layer_blocks = [
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
                 attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer,
                 visual_prompt_dim=super_prompt_tuning_dim, LoRA_dim=super_LoRA_dim, adapter_dim=super_adapter_dim,
                 prefix_dim=super_prefix_dim, drop_rate_LoRA=drop_rate_LoRA, drop_rate_prompt=drop_rate_prompt,
                 drop_rate_adapter=drop_rate_adapter)
-            for i in range(depth)])
+            for i in range(depth)]
+
+        self.blocks = nn.Sequential(*layer_blocks)
         self.norm = norm_layer(embed_dim)
 
         # Representation layer
@@ -529,16 +532,6 @@ class VisionTransformer(nn.Module):
         self.super_prefix_dim = super_prefix_dim
 
         self.init_weights(weight_init)
-
-        set_sample_config = {
-            'visual_prompt_dim': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-            'lora_dim': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-            'adapter_dim': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-            'prefix_dim':[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-
-        }
-        self.set_sample_config(set_sample_config)
-
         # self.freeze_stages()
 
     def freeze_stages(self):
