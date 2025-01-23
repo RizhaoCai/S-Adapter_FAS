@@ -17,7 +17,7 @@ The code repo for the paper ["S-Adapter: Generalizing Vision Transformer for Fac
     cd ..
     ```
 4. Configure default configs in [config/defaults.py](config/defaults.py)  
-This file provide many basic configs for data, network, and training. Some model-specific/custom configs are in each sub-folders of [models] (e.g. [models/HFN_MP/custom_config.py](models/HFN_MP/custom_config.py)). Custom configs will be merged with the deafult config.
+This file provide many basic configs for data, network, and training. Some model-specific/custom configs are in each sub-folders of [models] (e.g. [models/vit_s_adapter_tsr/custom_config.py](models/vit_s_adapter_tsr/custom_config.py)). Custom configs will be merged with the deafult config.
 
 Please configure `_C.DATA.ROOT_DIR` in [config/defaults.py](config/defaults.py), which is the root directory where you save the preprocessed data.
 
