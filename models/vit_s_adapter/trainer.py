@@ -1,5 +1,6 @@
 import os
 
+
 import numpy as np
 import pandas as pd
 import torch
@@ -16,6 +17,8 @@ import logging
 from data.transforms import VisualTransform, get_augmentation_transforms
 
 from test import metric_report_from_dict
+
+
 
 # try:
 # from torch.utils.tensorboard import SummaryWriter
@@ -80,20 +83,36 @@ class Trainer():
         self.train_patience = self.config.TRAIN.PATIENCE
 
 
+        self.train_mode = True
+
+        kwargs = {
+            'conv_type': self.config.MODEL.CONV,
+            'num_classes': self.config.MODEL.NUM_CLASSES,
+            'cdc_theta': self.config.MODEL.CDC_THETA,
+            'num_bins': self.config.MODEL.NUM_BIN,
+        }
+        self.network = build_net(arch_name=config.MODEL.ARCH, pretrained=config.MODEL.IMAGENET_PRETRAIN, **kwargs)
 
 
 
-        self.network = build_net(self.config)
-        if self.config.CUDA:
-            self.network.cuda()
-        self.loss = torch.nn.CrossEntropyLoss().cuda()
+        self.loss = torch.nn.CrossEntropyLoss()
 
+    def init_weight(self, ckpt_path):
+        logging.info("[*] Initialize model weight from {}".format(ckpt_path))
+        ckpt = torch.load(ckpt_path)
+        # self.best_valid_acc = ckpt['best_valid_acc']
+        self.network.load_state_dict(ckpt['model_state'], strict=False)
 
     def get_dataset(self, data_file_list, transform):
         datasets = []
+        if self.config.MODEL.NUM_CLASSES>2:
+            if_binary = False
+        else:
+            if_binary = True
         for data_list_path in data_file_list:
-            datasets.append(get_image_dataset_from_list(data_list_path, transform))
+            datasets.append(get_image_dataset_from_list(data_list_path, transform, if_binary_label=if_binary))
         return torch.utils.data.ConcatDataset(datasets)
+
 
 
     def get_dataloader(self):
@@ -114,7 +133,7 @@ class Trainer():
             assert config.DATA.TEST, "Please provide at least a data_list"
             test_dataset = self.get_dataset(config.DATA.TEST, test_data_transform)
             self.test_data_loader = torch.utils.data.DataLoader(test_dataset, test_batch_size, num_workers=num_workers,
-                                                                shuffle=False, drop_last=False)
+                                                                shuffle=True, drop_last=True)
             return self.test_data_loader
 
         else:
@@ -123,28 +142,42 @@ class Trainer():
             train_data_transform = VisualTransform(config, aug_transform)
             train_dataset = self.get_dataset(config.DATA.TRAIN, train_data_transform)
             self.train_data_loader = torch.utils.data.DataLoader(train_dataset, train_batch_size, num_workers=num_workers,
-                                                                 shuffle=True, pin_memory=True, drop_last=False)
+                                                                 shuffle=True, pin_memory=True, drop_last=True)
 
             assert config.DATA.VAL, "CONFIG.DATA.VAL should be provided"
             val_dataset = self.get_dataset(config.DATA.VAL, test_data_transform)
             self.val_data_loader = torch.utils.data.DataLoader(val_dataset, val_batch_size, num_workers=num_workers,
-                                                               shuffle=False, pin_memory=True, drop_last=False)
+                                                               shuffle=False, pin_memory=True, drop_last=True)
 
             return self.train_data_loader, self.val_data_loader
-
     def train(self, ):
+        self.get_dataloader()
+        if self.config.TRAIN.INIT and os.path.exists(self.config.TRAIN.INIT):
+            self.init_weight(self.config.TRAIN.INIT)
 
-        # Set up model
-        # Set up optimizer
+        if self.config.MODEL.RESET_CLS_HEAD:
+            logging.info("Re-init MLP Head")
+            self.network.head = torch.nn.Linear(768,2)
+
+        if self.config.CUDA:
+            self.network.cuda()
 
         if self.config.MODEL.FIX_BACKBONE:
-            logging.info('Fix Backbone')
             for name, p in self.network.named_parameters():
-                # import pdb; pdb.set_trace()
-                if 'fc' in name or 'layer4' in name:
+                if 'adapter' in name or 'head' in name:
                     p.requires_grad = True
+                    # import pdb; pdb.set_trace()
                 else:
                     p.requires_grad = False
+
+        if not self.config.MODEL.FIX_NORM:
+            for name, p in self.network.named_parameters():
+                if 'norm' in name:
+                    p.requires_grad = True
+                    # import pdb; pdb.set_trace()
+
+
+        # Set up optimizer
         if self.config.TRAIN.OPTIM.TYPE == 'SGD':
             logging.info('Setting: Using SGD Optimizer')
             self.optimizer = optim.SGD(
@@ -154,8 +187,6 @@ class Trainer():
 
         elif self.config.TRAIN.OPTIM.TYPE == 'Adam':
             logging.info('Setting: Using Adam Optimizer')
-
-
             self.optimizer = optim.Adam(
                 filter(lambda p: p.requires_grad, self.network.parameters()),
                 lr=self.init_lr,
@@ -163,7 +194,6 @@ class Trainer():
         self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.config.TRAIN.EPOCHS)
 
         # Set up data
-        self.get_dataloader()
         train_data_loader = self.train_data_loader
         val_data_loader = self.val_data_loader
         tensorboard_dir = os.path.join(self.config.OUTPUT_DIR, "tensorboard")
@@ -175,19 +205,13 @@ class Trainer():
         logging.info("\n[*] Train on {} samples, validate on {} samples".format(
             self.num_train, self.num_valid))
 
-
-        if self.config.TRAIN.INIT:
-            assert os.path.exists(self.config.TRAIN.INIT)
-            self.init_weight(self.config.TRAIN.INIT)
-        elif self.config.TRAIN.RESUME:
-            assert os.path.exists(self.config.TRAIN.RESUME)
+        if self.config.TRAIN.RESUME and os.path.exists(self.config.TRAIN.RESUME):
             logging.info("Resume=True.")
             self.load_checkpoint(self.config.TRAIN.RESUME)
 
         if self.config.CUDA:
             logging.info("Number of GPUs: {}".format(torch.cuda.device_count()))
             self.network = torch.nn.DataParallel(self.network)
-
 
         for epoch in range(self.start_epoch, self.epochs + 1):
             if self.tensorboard:
@@ -202,7 +226,7 @@ class Trainer():
 
             with tqdm(total=num_train, ncols=80) as pbar:
                 for i, batch_data in enumerate(train_data_loader):
-
+                    self.global_step += 1
                     loss = self._train_one_batch(batch_data=batch_data,
                                                  optimizer=self.optimizer
                                                  )
@@ -219,36 +243,39 @@ class Trainer():
                     if self.tensorboard:
                         self.tensorboard.add_scalar('loss/train_total', loss.item(), self.global_step)
 
-                    self.global_step += 1
 
-                self.lr_scheduler.step()
 
-            train_loss_avg = train_loss.avg
 
-            logging.info("Avg Training loss = {} ".format(str(train_loss_avg)))
-            # evaluate on validation set'
-            if epoch % self.val_freq == 0:
-                with torch.no_grad():
-                    val_output = self.validate(epoch, val_data_loader)
+                    # evaluate on validation set'
+                    if train_loss.avg < 0.2 and self.global_step % self.config.TRAIN.VAL_STEP == 0:
+                        train_loss_avg = train_loss.avg
+                        logging.info("Avg Training loss = {} ".format(str(train_loss_avg)))
+                        with torch.no_grad():
+                            val_output = self.validate(epoch, val_data_loader)
 
-                if val_output['MIN_HTER'] < self.val_metrcis['MIN_HTER']:
-                    logging.info("Save models")
-                    self.val_metrcis['MIN_HTER'] = val_output['MIN_HTER']
-                    self.val_metrcis['AUC'] = val_output['AUC']
-                    self.save_checkpoint(
-                        {'epoch': epoch,
-                         'val_metrics': self.val_metrcis,
-                         'global_step': self.global_step,
-                         'model_state': self.network.module.state_dict(),
-                         'optim_state': self.optimizer.state_dict(),
-                         }
-                    )
+                        if val_output['MIN_HTER'] < self.val_metrcis['MIN_HTER']:
+                            logging.info("Save models")
+                            self.val_metrcis['MIN_HTER'] = val_output['MIN_HTER']
+                            self.val_metrcis['AUC'] = val_output['AUC']
+                            self.save_checkpoint(
+                                {'epoch': epoch,
+                                 'val_metrics': self.val_metrcis,
+                                 'global_step': self.global_step,
+                                 'model_state': self.network.module.state_dict(),
+                                 'optim_state': self.optimizer.state_dict(),
+                                 }
+                            )
 
-                logging.info('Current Best MIN_HTER={}%, AUC={}%'.format(100 * self.val_metrcis['MIN_HTER'],
-                                                                         100 * self.val_metrcis['AUC']))
-                if epoch > 20 and train_loss.avg < 0.00001:
-                    logging.info("Early stop since Avg Training loss<0.00001. ".format(str(train_loss_avg)))
-                    return
+                        logging.info('Current Best MIN_HTER={}%, AUC={}%'.format(100 * self.val_metrcis['MIN_HTER'],
+                                                                                 100 * self.val_metrcis['AUC']))
+                        if epoch > 20 and train_loss.avg < 0.000001:
+                            logging.info("Early stop since Avg Training loss<0.000001. ".format(str(train_loss_avg)))
+                            return
+
+
+            self.lr_scheduler.step()
+
+
     def _train_one_batch(self, batch_data, optimizer):
         network_input, target = batch_data[1], batch_data[2]
 
@@ -256,7 +283,7 @@ class Trainer():
         # compute losses for differentiable modules
 
         loss = self._total_loss_caculation(cls_out, target)
-
+        # import pdb; pdb.set_trace()
         # compute gradients and update SGD
         optimizer.zero_grad()
         loss.backward()
@@ -283,6 +310,7 @@ class Trainer():
         return frame_metric_dict
 
     def test(self, test_data_loader):
+        self.network.cuda()
         if test_data_loader is None:
             batch_size = self.config.TEST.BATCH_SIZE
             num_workers = self.config.DATA.NUM_WORKERS
@@ -290,19 +318,27 @@ class Trainer():
             test_data_transform = VisualTransform(self.config)
             dataset = self.get_dataset(self.config.DATA.TEST, test_data_transform)
             test_data_loader = torch.utils.data.DataLoader(dataset, batch_size, num_workers=num_workers,
-                                                           shuffle=True, drop_last=False)
+                                                                shuffle=True, drop_last=False)
         avg_test_loss = AverageMeter()
         scores_pred_dict = {}
         spoofing_label_gt_dict = {}
         self.network.eval()
+
         with torch.no_grad():
+
             for data in tqdm(test_data_loader, ncols=80):
                 network_input, target, video_ids = data[1], data[2], data[3]
-
-                output_prob = self.inference(network_input.cuda())
+                x = network_input.cuda()
+                # import pdb; pdb.set_trace()
+                output_prob = self.inference(x)
                 test_loss = self._total_loss_caculation(output_prob, target)
                 pred_score = self._get_score_from_prob(output_prob)
                 avg_test_loss.update(test_loss.item(), network_input.size()[0])
+
+                #import pdb;
+                # pdb.set_trace()
+
+
 
                 gt_dict, pred_dict = self._collect_scores_from_loader(spoofing_label_gt_dict, scores_pred_dict,
                                                                       target['spoofing_label'].numpy(), pred_score,
@@ -347,7 +383,7 @@ class Trainer():
 
     def load_checkpoint(self, ckpt_path):
 
-        logging.info("[*] Loading checkpoint from {}".format(ckpt_path))
+        logging.info("[*] Loading model from {}".format(ckpt_path))
 
         ckpt = torch.load(ckpt_path)
         # load variables from checkpoint
@@ -355,25 +391,13 @@ class Trainer():
         self.global_step = ckpt['global_step']
         self.valid_metric = ckpt['val_metrics']
         # self.best_valid_acc = ckpt['best_valid_acc']
-        # import pdb; pdb.set_trace()
         self.network.load_state_dict(ckpt['model_state'])
-
-        if hasattr(self, 'optimizer') and 'optim_state' in ckpt.keys:
-            self.optimizer.load_state_dict(ckpt['optim_state'])
+        self.optimizer.load_state_dict(ckpt['optim_state'])
 
         logging.info(
             "[*] Loaded {} checkpoint @ epoch {}".format(
                 ckpt_path, ckpt['epoch'])
         )
-
-    def init_weight(self, ckpt_path):
-        logging.info("[*] Initialize model weight from {}".format(ckpt_path))
-        ckpt = torch.load(ckpt_path, strict=False)
-
-
-        # self.best_valid_acc = ckpt['best_valid_acc']
-        self.network.load_state_dict(ckpt['model_state'])
-
 
     def inference(self, *args, **kargs):
         """
@@ -389,7 +413,7 @@ class Trainer():
 
     def _get_score_from_prob(self, output_prob):
         output_scores = torch.softmax(output_prob, 1)
-        output_scores = output_scores.cpu().numpy()[:, 1] # The probability to be spoofing
+        output_scores = 1-output_scores.cpu().numpy()[:, 0] # Probability to be spoofing
         return output_scores
 
     def load_batch_data(self):

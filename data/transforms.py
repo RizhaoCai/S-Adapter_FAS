@@ -42,8 +42,8 @@ def get_augmentation_transforms(config):
         logging.info('Data Augmentation RandomErasing is ENABLED')
         p = config.TRAIN.AUG.ShufflePatch.p
         size = config.TRAIN.AUG.ShufflePatch.size
-        shuffle_patch_tranform = ShufflePatch(patch_size=size, shuffle_prob=p)
-        augmentation_transforms.extend([shuffle_patch_tranform])
+        shuffle_patch_transform = ShufflePatch(patch_size=size, shuffle_prob=p)
+        augmentation_transforms.extend([shuffle_patch_transform])
 
     return augmentation_transforms
 

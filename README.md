@@ -1,7 +1,7 @@
-# MetaPattern_FAS
-The code repo for the paper ["Learning Meta Pattern for Face Anti-Spoofing", IEEE TIFS 2022](https://ieeexplore.ieee.org/document/9732458)   /  [(ArXiv version)](https://arxiv.org/pdf/2110.06753.pdf). 
+# S-Adapter for face anti-spoofing
+The code repo for the paper ["S-Adapter: Generalizing Vision Transformer for Face Anti-Spoofing with Statistical Tokens", IEEE TIFS 2024](https://ieeexplore.ieee.org/document/10577177)   /  [(ArXiv version)](https://arxiv.org/abs/2309.04038). 
 
-![im](./img/1.png)
+![im](./img/s-adapter.png)
 # Steps for reproduction
 ## Data extraction
 1. Please download the datasets you need. Due to the license, I cannot redistribute the datasets. You have to download the datasets by submitting your requests. The links for downloading the datasets can be found in  https://github.com/RizhaoCai/Awesome-FAS.
@@ -25,7 +25,7 @@ Please configure `_C.DATA.ROOT_DIR` in [config/defaults.py](config/defaults.py),
 
 ```shell
 # Train models for the C+I+O to M protocol
-python train.py --trainer HFN_MP --config models/HFN_MP/CIO-M.yaml OUTPUT_DIR output/HFN_MP/CIO-M/NF2_align_InnerLoops4 TRAIN.NUM_FRAMES 2 TEST.NUM_FRAMES 2 TRAIN.INNER_LOOPS 4 TRAIN.META_LEARNING_RATE 0.001 TRAIN.IMAGENET_PRETRAIN True 
+python train.py --trainer vit_s_adapter_tsr --config models/vit_s_adapter_tsr/CIO-M.yaml OUTPUT_DIR output/vit_s_adapter_tsr/CIO-M/NF2_align_InnerLoops4 TRAIN.NUM_FRAMES 2 TEST.NUM_FRAMES 2 TRAIN.INNER_LOOPS 4 TRAIN.META_LEARNING_RATE 0.001 TRAIN.IMAGENET_PRETRAIN True 
 ```
 
 # Citation
@@ -51,5 +51,14 @@ If you use this repo, please kindly cite the below papers
   year={2020},
   publisher={IEEE}
 }
+
+@article{cai2024s,
+  title={S-adapter: Generalizing vision transformer for face anti-spoofing with statistical tokens},
+  author={Cai, Rizhao and Yu, Zitong and Kong, Chenqi and Li, Haoliang and Chen, Changsheng and Hu, Yongjian and Kot, Alex C},
+  journal={IEEE Transactions on Information Forensics and Security},
+  year={2024},
+  publisher={IEEE}
+}
+
 
 ```

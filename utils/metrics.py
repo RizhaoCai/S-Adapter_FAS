@@ -8,13 +8,15 @@ import torch
 import pdb
 from utils.parse_video_info import parse_attr_from_video_name
 
+# Positive means spoofing. Negative means bona fide
 def eval_stat(scores, labels, thr=0.5):
-    # label 1 for the postive, and the label 2 for the negatvie
+    # label 1 for the postive, and the label 0 for the negatvie
     pred = scores >= thr
-    TN = np.sum((labels == 0) & (pred == False))  # True Negative   -- True Reject 
+    TN = np.sum((labels == 0) & (pred == False))  # True Negative   -- True Reject
     FN = np.sum((labels == 1) & (pred == False))  # False Negative  -- False Reject
     FP = np.sum((labels == 0) & (pred == True))   # False Positive  -- False Accept
     TP = np.sum((labels == 1) & (pred == True))   # True Positive   -- True Accept
+
     return TN, FN, FP, TP
 
 def get_thresholds(scores, grid_density):
@@ -48,6 +50,24 @@ def get_eer_stats(scores, labels, grid_density = 100000):
         return 0.5, 0.5
     # pdb.set_trace()
     return eer, thr
+
+def get_tpr_at_fpr(scores, labels, target_fpr=0.1,  grid_density=2000):
+    # tpr true positive rate # True acceptance
+    # fpr: false postive rate: false acceptance
+    # In our code, we use 0 as bona fide and 1 as spoofing attack
+    thresholds = get_thresholds(scores, grid_density)
+
+    min_diff = 1.0
+    target_tpr = 1.0
+    for thr in thresholds:
+        TN, FN, FP, TP = eval_stat(scores, labels, thr)
+        # Negative for bonafide, positive for attack
+        fpr = FP / (FP+TN)
+        if min_diff > abs(fpr - target_fpr):
+            min_diff = abs(fpr - target_fpr)
+            target_tpr = TP / (TP+FN)
+
+    return target_tpr
 
 def get_min_hter(scores, labels, grid_density = 100000):
     thresholds = get_thresholds(scores, grid_density)

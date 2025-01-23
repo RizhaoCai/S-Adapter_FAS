@@ -1,6 +1,0 @@
-
-
-# Get model
-
-
-# get

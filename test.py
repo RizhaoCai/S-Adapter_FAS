@@ -3,7 +3,7 @@
 Usage:
     CUDA_VISIBLE_DEVICES=6 python3 test.py --trainer xx --config "output/CASIA-TRAIN/config.yaml" TEST.CKPT "output/CASIA-TRAIN/ckpt/epoch_0.ckpt" TEST.
 '''
-from utils.metrics import get_eer_stats, get_hter_at_thr, get_min_hter
+from utils.metrics import get_eer_stats, get_hter_at_thr, get_min_hter, get_tpr_at_fpr
 import os
 import logging
 import numpy as np
@@ -18,7 +18,6 @@ pd.set_option('display.max_columns', None)
 import sklearn.metrics as metrics
 
 torch.backends.cudnn.benchmark = True
-
 
 import argparse
 
@@ -119,6 +118,12 @@ def metric_report(scores_pred, scores_gt, thr):
     hter05, far05, frr05 = get_hter_at_thr(scores_pred, scores_gt, 0.5)
     min_hter, hter_thr, far_at_thr, frr_at_thr = get_min_hter(scores_pred, scores_gt)
 
+    tpr_fpr_10 = get_tpr_at_fpr(scores_pred, scores_gt, target_fpr=0.1)
+    tpr_fpr_01 = get_tpr_at_fpr(scores_pred, scores_gt, target_fpr=0.01)
+    tpr_fpr_001 = get_tpr_at_fpr(scores_pred, scores_gt, target_fpr=0.001)
+
+
+
     metric_dict = {
         'AUC':auc,
         'EER': eer,
@@ -134,6 +139,9 @@ def metric_report(scores_pred, scores_gt, thr):
         'MIN_HTER_THR': hter_thr,
         'MIN_FAR_THR': far_at_thr,
         'MIN_FRR_THR': frr_at_thr,
+        'TPR_FPR_10%': tpr_fpr_10,
+        'TPR_FPR_1%': tpr_fpr_01,
+        'TPR_FPR_0.1%': tpr_fpr_001,
 
     }
     return metric_dict

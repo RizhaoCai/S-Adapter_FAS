@@ -8,6 +8,7 @@ from torchvision.models.resnet import ResNet, BasicBlock
 import torchvision.models as models
 from torch.nn import functional as F
 import pdb
+from timm.models.vision_transformer import vit_base_patch16_224
 
 def get_model_from_torchvision(arch_name, imagetnet_pretrain):
     """
@@ -45,12 +46,16 @@ def build_net(config):
     """
     imagetnet_pretrain = config.MODEL.IMAGENET_PRETRAIN
     model_arch = config.MODEL.ARCH
+    num_classes = config.MODEL.NUM_CLASSES
     if model_arch.lower() in models.__dict__.keys():
         return get_model_from_torchvision(model_arch, imagetnet_pretrain)
 
     elif model_arch.lower() == 'ghost_net':
         return get_ghost_net()
 
+    elif model_arch.lower() == 'vit_base_patch16_224':
+        model = vit_base_patch16_224(pretrained=imagetnet_pretrain, num_classes=num_classes)
+        return model
     else:
         exit('No valid arch name provided!')
 

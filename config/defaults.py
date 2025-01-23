@@ -85,7 +85,7 @@ _C.TRAIN.AUG.RandomHorizontalFlip.p = 0.5
 
 _C.TRAIN.AUG.RandomCrop = CN(new_allowed=True)
 _C.TRAIN.AUG.RandomCrop.ENABLE = False
-_C.TRAIN.AUG.RandomCrop.size = 256
+_C.TRAIN.AUG.RandomCrop.size = 224
 
 _C.TRAIN.AUG.RandomErasing = CN(new_allowed=True)
 _C.TRAIN.AUG.RandomErasing.ENABLE = False
